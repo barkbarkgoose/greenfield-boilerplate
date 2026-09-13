@@ -1,5 +1,7 @@
 import axios from 'axios'
+import type { AxiosError } from 'axios'
 import router from '@/router'
+import { clearStoredAuth, TOKEN_KEY } from '@/utils/authStorage'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8800',
@@ -10,7 +12,7 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('auth_token')
+    const token = localStorage.getItem(TOKEN_KEY)
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -21,13 +23,26 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('refresh_token')
-      localStorage.removeItem('auth_user')
-      router.push('/login')
+  (error: AxiosError) => {
+    const status = error.response?.status
+    const requestUrl = error.config?.url ?? ''
+    const isAuthAttempt =
+      requestUrl.includes('/auth/login/') || requestUrl.includes('/auth/register/')
+
+    // A 401 on a normal request means the access token expired (or was revoked).
+    // Clear the stored session and route to /login; the router guard re-reads
+    // storage, so the in-memory auth state is reconciled on navigation.
+    if (status === 401 && !isAuthAttempt) {
+      clearStoredAuth()
+
+      if (router.currentRoute.value.name !== 'login') {
+        router.push({
+          name: 'login',
+          query: { redirect: router.currentRoute.value.fullPath }
+        })
+      }
     }
+
     return Promise.reject(error)
   }
 )

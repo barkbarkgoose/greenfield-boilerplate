@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
+const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
@@ -17,7 +18,8 @@ async function handleSubmit() {
   
   try {
     await authStore.login({ email: email.value, password: password.value })
-    router.push('/dashboard')
+    const redirect = route.query.redirect
+    router.push(typeof redirect === 'string' ? redirect : '/dashboard')
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'response' in error) {
       const err = error as { response?: { data?: { detail?: string } } }

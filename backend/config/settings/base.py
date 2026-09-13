@@ -1,6 +1,7 @@
 """Base settings for config project."""
 
-import os
+import sys
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -9,9 +10,51 @@ env = environ.Env()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+# Make the `keychain` package importable when settings load through a plain
+# `python manage.py` invocation (dev.sh already adds backend/ to sys.path).
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 environ.Env.read_env(BASE_DIR / ".env")
 
-SECRET_KEY = env("SECRET_KEY")
+from keychain import (  # noqa: E402
+    KeychainNotInitializedError,
+    get as keychain_get,
+    get_int as keychain_get_int,
+    get_list as keychain_get_list,
+)
+
+
+def _keychain_or_env(key: str, env_var: str, default: str | None = None) -> str | None:
+    """Resolve a scalar setting from the keychain, falling back to the environment.
+
+    The keychain is optional during first-run bootstrap: if it has not been
+    initialized, values are read from `.env` so management commands keep working
+    before `python -m keychain init`.
+    """
+    try:
+        value = keychain_get(key)
+    except KeychainNotInitializedError:
+        value = None
+    if value is not None:
+        return value
+    return env(env_var, default=default)
+
+
+def _keychain_or_env_list(
+    key: str, env_var: str, default: list[str] | None = None
+) -> list[str]:
+    """Resolve a comma-separated list setting from keychain or environment."""
+    try:
+        value = keychain_get_list(key)
+    except KeychainNotInitializedError:
+        value = None
+    if value is not None:
+        return value
+    return env.list(env_var, default=default if default is not None else [])
+
+
+SECRET_KEY = _keychain_or_env("SECRET_KEY", "SECRET_KEY")
 
 DEBUG = env.bool("DEBUG", default=False)
 
@@ -64,7 +107,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-DATABASES = {"default": env.db("DATABASE_URL", default="sqlite:///db.sqlite3")}
+DATABASE_URL = _keychain_or_env(
+    "DATABASE_URL", "DATABASE_URL", default="sqlite:///db.sqlite3"
+)
+DATABASES = {"default": env.db_url_config(DATABASE_URL)}
 
 AUTH_USER_MODEL = "users.User"
 
@@ -89,7 +135,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # CORS
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+CORS_ALLOWED_ORIGINS = _keychain_or_env_list(
+    "CORS_ALLOWED_ORIGINS", "CORS_ALLOWED_ORIGINS"
+)
 
 # REST Framework
 REST_FRAMEWORK = {
@@ -102,10 +150,37 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
 }
 
-# Simple JWT
-from datetime import timedelta
+
+def _jwt_lifetimes() -> tuple[timedelta, timedelta]:
+    """Resolve JWT lifetimes from the keychain, falling back to safe defaults.
+
+    These are read from the keychain so token lifetimes can be tuned per
+    environment without editing code. Falls back to 60 minutes / 7 days when the
+    keychain has not been initialized yet (e.g. during the first migration).
+    """
+    try:
+        access_minutes = (
+            keychain_get_int("JWT_ACCESS_TOKEN_LIFETIME_MINUTES", default=60) or 60
+        )
+    except KeychainNotInitializedError:
+        access_minutes = 60
+    try:
+        refresh_days = (
+            keychain_get_int("JWT_REFRESH_TOKEN_LIFETIME_DAYS", default=7) or 7
+        )
+    except KeychainNotInitializedError:
+        refresh_days = 7
+    return timedelta(minutes=access_minutes), timedelta(days=refresh_days)
+
+
+_ACCESS_LIFETIME, _REFRESH_LIFETIME = _jwt_lifetimes()
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": _ACCESS_LIFETIME,
+    "REFRESH_TOKEN_LIFETIME": _REFRESH_LIFETIME,
 }
+
+# User settings / secrets-at-rest encryption. Optional: when unset, the users
+# crypto helper falls back to keychain.key and then to a SHA-256 derivation of
+# SECRET_KEY (see apps/users/crypto.py).
+SETTINGS_ENCRYPTION_KEY = env("SETTINGS_ENCRYPTION_KEY", default="")
