@@ -3,10 +3,18 @@ import type { RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const routes: RouteRecordRaw[] = [
+  // Public, customer-facing pages: no account needed.
   {
     path: '/',
     name: 'home',
-    component: () => import('@/views/HomeView.vue')
+    component: () => import('@/views/LandingView.vue'),
+    meta: { public: true }
+  },
+  {
+    path: '/book',
+    name: 'book',
+    component: () => import('@/views/IntakeView.vue'),
+    meta: { public: true }
   },
   {
     path: '/login',
@@ -36,7 +44,12 @@ const routes: RouteRecordRaw[] = [
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes
+  routes,
+  scrollBehavior(to, _from, savedPosition) {
+    if (savedPosition) return savedPosition
+    if (to.hash) return { el: to.hash, behavior: 'smooth' }
+    return { top: 0 }
+  }
 })
 
 router.beforeEach((to, _from, next) => {

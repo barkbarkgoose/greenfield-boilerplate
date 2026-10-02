@@ -141,6 +141,29 @@ uv run --with-requirements requirements.txt python -m pytest
 | `/api/v1/auth/refresh/` | POST | No | Refresh access token |
 | `/api/v1/auth/settings/` | GET | Yes | Read current user's settings |
 | `/api/v1/auth/settings/` | PATCH | Yes | Update current user's settings |
+| `/api/v1/intake/catalog/` | GET | No | Services, prices, bundles, booking policy |
+| `/api/v1/intake/estimate/` | POST | No | Price a set of services for a date |
+| `/api/v1/intake/requests/` | POST | No | Submit a booking or contact request (10/hour per IP) |
+
+## Mobile Mechanic Site
+
+The public site needs no login:
+
+- `/` is the landing page (services, labor prices, bundles, booking policy).
+- `/book` is the intake form: VIN, services, preferred date, live estimate.
+  `/book?mode=callback` is the "just contact me" note.
+
+Pricing lives in one place, `backend/apps/intake/pricing.py`. Edit the business
+inputs at the top (target rate, insurance reserve, drive time, emergency fee, lead
+time) and each service's labor hours; the site and stored quotes follow. With the
+defaults, labor bills at $55/hr ($50 target + $5 insurance), each visit adds a $45
+service call fee for drive time, jobs within 7 days add a $75 emergency fee, and
+pads/rotors/suspension on the same axle are discounted by the labor hours they share.
+Estimates are labor only; parts are quoted separately.
+
+Submissions are stored as `ServiceRequest` rows and managed in the Django admin at
+`/admin/intake/servicerequest/` (create an admin with `createsuperuser`). Business name
+and contact details shown on the site are in `frontend/src/config/business.ts`.
 
 ## Add New Apps
 

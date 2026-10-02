@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "apps.organizations",
     "apps.users",
+    "apps.intake",
 ]
 
 MIDDLEWARE = [
@@ -148,6 +149,12 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    # Only views that set `throttle_scope` are throttled (the public intake form).
+    "DEFAULT_THROTTLE_CLASSES": ("rest_framework.throttling.ScopedRateThrottle",),
+    "DEFAULT_THROTTLE_RATES": {
+        "intake_estimate": "120/hour",
+        "intake_submit": "10/hour",
+    },
 }
 
 

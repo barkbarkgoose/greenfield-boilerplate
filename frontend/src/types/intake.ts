@@ -1,0 +1,90 @@
+export interface CatalogService {
+  key: string
+  name: string
+  description: string
+  labor_hours: string
+  price: string
+  unit: string | null
+  max_quantity: number
+  quote_required: boolean
+}
+
+export interface CatalogBundle {
+  key: string
+  name: string
+  description: string
+  discount_per_unit: string
+}
+
+export interface Catalog {
+  services: CatalogService[]
+  bundles: CatalogBundle[]
+  labor_rate: string
+  service_call_fee: string
+  emergency_fee: string
+  booking_lead_days: number
+  emergency_window_days: number
+}
+
+export interface ServiceSelection {
+  key: string
+  quantity: number
+}
+
+export interface EstimateLineItem {
+  key: string
+  name: string
+  quantity: number
+  unit: string | null
+  unit_price: string
+  amount: string
+  quote_required: boolean
+}
+
+export interface Estimate {
+  line_items: EstimateLineItem[]
+  discounts: { key: string; name: string; units: number; amount: string }[]
+  subtotal: string
+  discount_total: string
+  service_call_fee: string
+  emergency_fee: string
+  total: string
+  labor_hours: string
+  needs_custom_quote: boolean
+  scheduling: {
+    days_out: number | null
+    is_emergency: boolean
+    short_notice: boolean
+  }
+}
+
+export type RequestType = 'booking' | 'callback'
+
+export interface ServiceRequestPayload {
+  request_type: RequestType
+  name: string
+  phone: string
+  email: string
+  service_address: string
+  vin: string
+  vehicle_year: string
+  vehicle_make: string
+  vehicle_model: string
+  services: ServiceSelection[]
+  other_description: string
+  preferred_date: string | null
+  notes: string
+}
+
+export interface ServiceRequestCreated {
+  id: number
+  request_type: RequestType
+  estimate: Estimate | Record<string, never>
+  preferred_date: string | null
+}
+
+export interface DecodedVehicle {
+  year: string
+  make: string
+  model: string
+}
