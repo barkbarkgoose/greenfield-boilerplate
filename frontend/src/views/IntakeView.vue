@@ -4,6 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import PublicHeader from '@/components/PublicHeader.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
+import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import { useAuthStore } from '@/stores/auth'
+import { fetchMyVehicles } from '@/services/garage'
+import type { Vehicle } from '@/types/garage'
 import { business } from '@/config/business'
 import { decodeVin, fetchCatalog, fetchEstimate, submitServiceRequest } from '@/services/intake'
 import { VIN_PATTERN, formatMoney, isoDateFromToday, normalizeVin } from '@/utils/intake'
@@ -17,6 +21,7 @@ import type {
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 
 const mode = computed<RequestType>(() => (route.query.mode === 'callback' ? 'callback' : 'booking'))
 
@@ -39,8 +44,26 @@ const form = reactive({
   vehicle_model: '',
   other_description: '',
   preferred_date: isoDateFromToday(14),
-  notes: ''
+  notes: '',
+  // Honeypot: hidden from people, bots tend to fill it in.
+  website: ''
 })
+
+// --- Accounts & spam protection ---------------------------------------------
+
+const garage = ref<Vehicle[]>([])
+const captchaToken = ref('')
+const captcha = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+const captchaRequired = computed(
+  () => !!import.meta.env.VITE_TURNSTILE_SITE_KEY && !authStore.isAuthenticated
+)
+
+function useVehicle(vehicle: Vehicle) {
+  form.vin = vehicle.vin
+  form.vehicle_year = vehicle.year
+  form.vehicle_make = vehicle.make
+  form.vehicle_model = vehicle.model
+}
 
 // Selected services: key -> quantity (axles for brake/suspension work).
 const selected = reactive<Record<string, number>>({})
@@ -172,6 +195,7 @@ function validateLocally(): Record<string, string> {
     found.notes = 'Leave a short note about what you need.'
   }
   if (vin && !VIN_PATTERN.test(vin)) found.vin = 'A VIN is 17 letters and numbers (never I, O or Q).'
+  if (captchaRequired.value && !captchaToken.value) found.captcha_token = 'Please complete the verification.'
   return found
 }
 
@@ -199,13 +223,18 @@ async function handleSubmit() {
       services: isBooking ? selections.value : [],
       other_description: isBooking && selected.other ? form.other_description.trim() : '',
       preferred_date: isBooking ? form.preferred_date : null,
-      notes: form.notes.trim()
+      notes: form.notes.trim(),
+      website: form.website,
+      captcha_token: captchaToken.value
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 400) {
       errors.value = flattenErrors(error.response.data)
-      generalError.value = 'Please fix the highlighted fields.'
+      generalError.value =
+        errors.value.captcha_token || errors.value.detail || 'Please fix the highlighted fields.'
+      // Turnstile tokens are single-use; get a fresh one for the retry.
+      captcha.value?.reset()
     } else if (axios.isAxiosError(error) && error.response?.status === 429) {
       generalError.value = `Too many requests from this connection. Please call or text ${business.phone}.`
     } else {
@@ -230,9 +259,24 @@ function startOver() {
   })
   lastDecodedVin = ''
   vinStatus.value = 'idle'
+  captchaToken.value = ''
 }
 
 onMounted(async () => {
+  if (typeof route.query.vin === 'string') form.vin = route.query.vin
+
+  if (authStore.isAuthenticated && !authStore.isStaff) {
+    form.name = authStore.user?.name ?? ''
+    form.email = authStore.user?.email ?? ''
+    fetchMyVehicles()
+      .then((vehicles) => {
+        garage.value = vehicles
+        const match = vehicles.find((v) => v.vin === normalizeVin(form.vin))
+        if (match) useVehicle(match)
+      })
+      .catch(() => {})
+  }
+
   try {
     catalog.value = await fetchCatalog()
   } catch {
@@ -276,6 +320,34 @@ const labelClass = 'block text-sm font-medium text-slate-700'
           <span class="text-xl font-bold text-slate-900">{{ formatMoney(submitted.estimate.total) }}</span>
           <span class="block text-xs text-slate-500">Plus parts. Final price confirmed before any work starts.</span>
         </p>
+        <div v-if="submitted.claim_token" class="mt-6 rounded-2xl bg-amber-50 p-5 text-left ring-1 ring-amber-200">
+          <p class="font-semibold text-slate-900">Save this to your garage</p>
+          <p class="mt-1 text-sm text-slate-700">
+            Create a free account to track this request, message me with questions, and keep a repair
+            history for your car. The link is also in your confirmation email.
+          </p>
+          <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+            <router-link
+              :to="{ name: 'register', query: { redirect: `/claim/${submitted.claim_token}` } }"
+              class="rounded-xl bg-slate-900 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              Create account
+            </router-link>
+            <router-link
+              :to="{ name: 'login', query: { redirect: `/claim/${submitted.claim_token}` } }"
+              class="rounded-xl px-4 py-2 text-center text-sm font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-white"
+            >
+              I already have one
+            </router-link>
+          </div>
+        </div>
+        <router-link
+          v-else-if="authStore.isAuthenticated"
+          :to="{ name: 'account-request', params: { id: submitted.id } }"
+          class="mt-6 inline-block font-semibold text-amber-700 hover:text-amber-600"
+        >
+          Track it in your garage →
+        </router-link>
         <p class="mt-6 text-sm text-slate-500">Reference #{{ submitted.id }} · Questions? {{ business.phone }}</p>
         <div class="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
           <router-link to="/" class="rounded-xl border border-slate-300 px-5 py-2.5 font-semibold text-slate-700 hover:bg-slate-50">
@@ -334,6 +406,19 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                 Your vehicle
                 <span v-if="mode === 'callback'" class="text-sm font-normal text-slate-500">(optional)</span>
               </h2>
+              <div v-if="garage.length" class="mt-3 flex flex-wrap gap-2">
+                <span class="w-full text-sm text-slate-500">From your garage:</span>
+                <button
+                  v-for="vehicle in garage"
+                  :key="vehicle.id"
+                  type="button"
+                  class="rounded-full px-3 py-1.5 text-sm font-medium ring-1"
+                  :class="normalizeVin(form.vin) === vehicle.vin ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'"
+                  @click="useVehicle(vehicle)"
+                >
+                  {{ vehicle.label }}
+                </button>
+              </div>
               <div class="mt-4">
                 <label for="vin" :class="labelClass">VIN (Vehicle Identification Number)</label>
                 <input
@@ -533,7 +618,7 @@ const labelClass = 'block text-sm font-medium text-slate-700'
           </div>
 
           <!-- Estimate sidebar -->
-          <aside id="estimate" class="scroll-mt-20 pb-16 lg:sticky lg:top-24 lg:self-start lg:pb-0">
+          <aside id="estimate" class="relative scroll-mt-20 pb-16 lg:sticky lg:top-24 lg:self-start lg:pb-0">
             <div class="rounded-2xl bg-slate-900 p-6 text-white shadow-lg">
               <template v-if="mode === 'booking'">
                 <h2 class="text-lg font-semibold">Your estimate</h2>
@@ -587,6 +672,12 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                   {{ business.phone }}
                 </a>
               </template>
+
+              <div class="absolute -left-[9999px] h-px w-px overflow-hidden" aria-hidden="true">
+                <label for="website">Leave this empty</label>
+                <input id="website" v-model="form.website" type="text" name="website" tabindex="-1" autocomplete="off" />
+              </div>
+              <TurnstileWidget v-if="captchaRequired" ref="captcha" class="mt-5" @update:token="captchaToken = $event" />
 
               <p v-if="generalError" class="mt-5 rounded-lg bg-red-500/15 p-3 text-sm text-red-200">{{ generalError }}</p>
               <button

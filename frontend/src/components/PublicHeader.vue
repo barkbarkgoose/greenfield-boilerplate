@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { business } from '@/config/business'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
 </script>
 
 <template>
@@ -27,8 +30,22 @@ import { business } from '@/config/business'
           Contact me
         </router-link>
         <router-link
+          v-if="authStore.isAuthenticated"
+          :to="authStore.homeRoute"
+          class="rounded-lg px-3 py-2 text-sm font-medium text-slate-300 hover:text-white"
+        >
+          {{ authStore.isStaff ? 'Dashboard' : 'My garage' }}
+        </router-link>
+        <router-link
+          v-else
+          :to="{ name: 'login' }"
+          class="rounded-lg px-3 py-2 text-sm font-medium text-slate-300 hover:text-white"
+        >
+          Sign in
+        </router-link>
+        <router-link
           :to="{ name: 'book' }"
-          class="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:bg-amber-300"
+          class="whitespace-nowrap rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:bg-amber-300"
         >
           Book service
         </router-link>

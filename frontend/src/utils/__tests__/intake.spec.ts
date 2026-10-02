@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { VIN_PATTERN, formatMoney, normalizeVin } from '@/utils/intake'
+import {
+  VIN_PATTERN,
+  formatDate,
+  formatMoney,
+  fromDateTimeLocal,
+  normalizeVin,
+  servicesLabel,
+  toDateTimeLocal
+} from '@/utils/intake'
 
 describe('normalizeVin', () => {
   it('uppercases and strips spaces and dashes', () => {
@@ -26,5 +34,28 @@ describe('formatMoney', () => {
 
   it('keeps cents otherwise', () => {
     expect(formatMoney('12.50')).toBe('$12.50')
+  })
+})
+
+describe('date helpers', () => {
+  it('formats a date-only value without shifting the day', () => {
+    expect(formatDate('2026-10-16')).toContain('Oct 16')
+  })
+
+  it('round-trips datetime-local values through ISO', () => {
+    const local = '2026-10-16T09:30'
+    expect(toDateTimeLocal(fromDateTimeLocal(local))).toBe(local)
+    expect(fromDateTimeLocal('')).toBeNull()
+  })
+})
+
+describe('servicesLabel', () => {
+  it('joins names and marks quantities', () => {
+    expect(
+      servicesLabel([
+        { name: 'Brake pads', quantity: 2 },
+        { name: 'Oil change', quantity: 1 }
+      ])
+    ).toBe('Brake pads ×2, Oil change')
   })
 })

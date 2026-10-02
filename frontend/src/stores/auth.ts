@@ -25,6 +25,9 @@ export const useAuthStore = defineStore('auth', () => {
   const userSettings = ref<UserSettings | null>(null)
 
   const isAuthenticated = computed(() => !!token.value && !isTokenExpired(token.value))
+  const isStaff = computed(() => isAuthenticated.value && !!user.value?.is_staff)
+  // Where a signed-in person lands: the mechanic's dashboard or the customer's garage.
+  const homeRoute = computed(() => (isStaff.value ? '/dashboard' : '/account'))
 
   function clearAuthState(): void {
     token.value = null
@@ -121,6 +124,7 @@ export const useAuthStore = defineStore('auth', () => {
       id: response.data.id,
       email: response.data.email,
       name: response.data.name,
+      is_staff: !!response.data.is_staff,
       organization: response.data.organization
     })
   }
@@ -134,6 +138,8 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     userSettings,
     isAuthenticated,
+    isStaff,
+    homeRoute,
     loadFromStorage,
     fetchUserSettings,
     updateUserSettings,

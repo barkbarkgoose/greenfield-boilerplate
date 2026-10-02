@@ -143,27 +143,74 @@ uv run --with-requirements requirements.txt python -m pytest
 | `/api/v1/auth/settings/` | PATCH | Yes | Update current user's settings |
 | `/api/v1/intake/catalog/` | GET | No | Services, prices, bundles, booking policy |
 | `/api/v1/intake/estimate/` | POST | No | Price a set of services for a date |
-| `/api/v1/intake/requests/` | POST | No | Submit a booking or contact request (10/hour per IP) |
+| `/api/v1/intake/requests/` | POST | Optional | Submit a booking or contact request (10/hour per IP) |
+| `/api/v1/garage/vehicles/` | GET | Yes | Customer's vehicles with repair history |
+| `/api/v1/garage/vehicles/<id>/` | PATCH | Yes | Rename a vehicle (nickname) |
+| `/api/v1/garage/requests/` | GET | Yes | Customer's requests |
+| `/api/v1/garage/requests/<id>/` | GET | Yes | Request detail with messages |
+| `/api/v1/garage/requests/<id>/messages/` | POST | Yes | Add a note/question |
+| `/api/v1/garage/claim/` | POST | Yes | Attach a guest request via its claim token |
+| `/api/v1/manage/summary/` | GET | Staff | Dashboard counts and upcoming appointments |
+| `/api/v1/manage/requests/` | GET | Staff | All requests; `status`, `q`, `unread`, `emergency`, `ordering`, `page` |
+| `/api/v1/manage/requests/<id>/` | GET/PATCH | Staff | Request detail / update status, appointment, notes |
+| `/api/v1/manage/requests/<id>/messages/` | POST | Staff | Reply to the customer (emails them) |
 
 ## Mobile Mechanic Site
 
-The public site needs no login:
+### Pages
 
-- `/` is the landing page (services, labor prices, bundles, booking policy).
-- `/book` is the intake form: VIN, services, preferred date, live estimate.
-  `/book?mode=callback` is the "just contact me" note.
+| Path | Who | What |
+|------|-----|------|
+| `/` | Anyone | Landing page: services, labor prices, bundles, booking policy |
+| `/book` | Anyone | Intake form with live estimate; `?mode=callback` for "just contact me" |
+| `/account` | Customers | "My garage": each car with its repair history |
+| `/account/requests/:id` | Customers | Request details, appointment, notes/questions thread |
+| `/claim/:token` | Customers | Attaches a guest booking to the signed-in account |
+| `/dashboard` | Staff (`is_staff`) | Bookings dashboard: filters, search, unread, upcoming |
+| `/dashboard/requests/:id` | Staff | Manage status, appointment, odometer, final total, private notes; reply |
 
-Pricing lives in one place, `backend/apps/intake/pricing.py`. Edit the business
-inputs at the top (target rate, insurance reserve, drive time, emergency fee, lead
-time) and each service's labor hours; the site and stored quotes follow. With the
-defaults, labor bills at $55/hr ($50 target + $5 insurance), each visit adds a $45
-service call fee for drive time, jobs within 7 days add a $75 emergency fee, and
-pads/rotors/suspension on the same axle are discounted by the labor hours they share.
-Estimates are labor only; parts are quoted separately.
+Make yourself staff with `python manage.py createsuperuser` (or tick `is_staff` in the
+Django admin). Customers create accounts at `/register`; no organization is needed.
 
-Submissions are stored as `ServiceRequest` rows and managed in the Django admin at
-`/admin/intake/servicerequest/` (create an admin with `createsuperuser`). Business name
-and contact details shown on the site are in `frontend/src/config/business.ts`.
+### How bookings reach a customer's garage
+
+Bookings made while signed in go straight to the customer's garage, matched to a car by
+VIN. Guest bookings get a one-time claim link (on the confirmation screen and in the
+confirmation email). Opening it while signed in moves the booking into that account.
+Bookings are deliberately *not* linked by email address, because signup doesn't verify
+email and anyone could otherwise register with someone else's address to see their history.
+
+### Pricing
+
+Pricing lives in one place, `backend/apps/intake/pricing.py`. Edit the business inputs at
+the top (target rate, insurance reserve, drive time, emergency fee, lead time) and each
+service's labor hours; the site and stored quotes follow. With the defaults, labor bills at
+$55/hr ($50 target + $5 insurance), each visit adds a $45 service call fee for drive time,
+jobs within 7 days add a $75 emergency fee, and pads/rotors/suspension on the same axle are
+discounted by the labor hours they share. Estimates are labor only.
+
+### Email
+
+| Event | Goes to |
+|-------|---------|
+| New booking / contact request | `INTAKE_NOTIFY_EMAILS` (you) and the customer (confirmation + claim link) |
+| Customer adds a note | `INTAKE_NOTIFY_EMAILS` |
+| You reply | The customer |
+| You change status/appointment with "Email the customer" ticked | The customer |
+
+Local development prints emails to the backend console. For production, set `SITE_URL`,
+`INTAKE_NOTIFY_EMAILS`, `DEFAULT_FROM_EMAIL`, `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_HOST_USER`
+and put `EMAIL_HOST_PASSWORD` in the keychain (see `backend/.env.example`). Set
+`TIME_ZONE` (e.g. `America/Denver`) so appointment times in emails are in shop time.
+Emails are sent inline and failures are logged, never shown to the customer.
+
+### Spam protection
+
+- A hidden honeypot field rejects simple bots (always on).
+- [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) captcha for guest
+  submissions, on when both keys are set: `TURNSTILE_SECRET_KEY` (backend keychain) and
+  `VITE_TURNSTILE_SITE_KEY` (frontend `.env`). Signed-in customers skip it.
+- Per-IP rate limits: 10 submissions/hour, 120 estimates/hour.
 
 ## Add New Apps
 

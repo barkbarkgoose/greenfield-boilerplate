@@ -134,7 +134,8 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "email", "name", "organization", "settings"]
+        fields = ["id", "email", "name", "is_staff", "organization", "settings"]
+        read_only_fields = ["is_staff"]
 
     def get_settings(self, obj):
         return format_safe_user_settings(obj.settings or {})
@@ -146,7 +147,10 @@ class RegisterSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, validators=[validate_password])
     name = serializers.CharField(max_length=255)
-    organization_name = serializers.CharField(max_length=255)
+    # Optional: customers signing up to track their car don't have one.
+    organization_name = serializers.CharField(
+        max_length=255, required=False, allow_blank=True
+    )
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
@@ -155,7 +159,9 @@ class RegisterSerializer(serializers.Serializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        organization_name = validated_data.pop("organization_name")
+        organization_name = (
+            validated_data.pop("organization_name", "") or ""
+        ).strip() or validated_data["name"]
         organization = Organization.objects.create(name=organization_name)
         user = User.objects.create_user(
             organization=organization,

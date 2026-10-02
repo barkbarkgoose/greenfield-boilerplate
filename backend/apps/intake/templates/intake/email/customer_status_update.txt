@@ -1,0 +1,15 @@
+{% autoescape off %}Hi {{ req.name }},
+
+Update on your request #{{ req.id }}{% if req.vehicle_label %} ({{ req.vehicle_label }}){% endif %}: {{ headline }}
+{% if req.status == "scheduled" and req.scheduled_for %}
+Appointment: {{ scheduled_for|date:"l, F j \a\t g:i A" }}
+Location: {{ req.service_address|default:"as discussed" }}
+{% endif %}{% if req.status == "completed" and req.final_total %}
+Total: ${{ req.final_total }}
+{% endif %}
+{% if req.customer_id %}Details: {{ site_url }}/account/requests/{{ req.id }}
+{% endif %}
+Questions? Just reply to this email.
+
+{{ business_name }}
+{% endautoescape %}

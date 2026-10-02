@@ -7,7 +7,7 @@ export interface RegisterRequest {
   email: string
   password: string
   name: string
-  organization_name: string
+  organization_name?: string
 }
 
 export interface LoginResponse {
@@ -20,6 +20,7 @@ export interface RegisterResponse {
   id: number
   email: string
   name: string
+  is_staff?: boolean
   organization: {
     id: number
     name: string
@@ -50,6 +51,7 @@ export interface User {
   id: number
   email: string
   name: string
+  is_staff?: boolean
   organization?: {
     id: number
     name: string

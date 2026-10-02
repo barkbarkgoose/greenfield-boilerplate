@@ -15,7 +15,6 @@ const year = new Date().getFullYear()
         <a :href="`tel:${business.phone.replace(/[^\d+]/g, '')}`" class="hover:text-slate-800">{{ business.phone }}</a>
         <a :href="`mailto:${business.email}`" class="hover:text-slate-800">{{ business.email }}</a>
         <span>© {{ year }}</span>
-        <router-link to="/login" class="text-slate-400 hover:text-slate-600">Owner login</router-link>
       </div>
     </div>
   </footer>

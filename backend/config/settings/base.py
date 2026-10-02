@@ -125,7 +125,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"
+# Shop-local time zone: appointment times in emails and the admin use it.
+TIME_ZONE = env("TIME_ZONE", default="UTC")
 USE_I18N = True
 USE_TZ = True
 
@@ -154,6 +155,8 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "intake_estimate": "120/hour",
         "intake_submit": "10/hour",
+        "intake_message": "30/hour",
+        "intake_claim": "20/hour",
     },
 }
 
@@ -191,3 +194,34 @@ SIMPLE_JWT = {
 # crypto helper falls back to keychain.key and then to a SHA-256 derivation of
 # SECRET_KEY (see apps/users/crypto.py).
 SETTINGS_ENCRYPTION_KEY = env("SETTINGS_ENCRYPTION_KEY", default="")
+
+# --- Email -------------------------------------------------------------------
+# SMTP by default; local/test settings override the backend. Credentials come
+# from the keychain so they never live in .env.
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend"
+)
+EMAIL_HOST = _keychain_or_env("EMAIL_HOST", "EMAIL_HOST", default="localhost")
+EMAIL_PORT = int(_keychain_or_env("EMAIL_PORT", "EMAIL_PORT", default="587"))
+EMAIL_HOST_USER = _keychain_or_env("EMAIL_HOST_USER", "EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = _keychain_or_env(
+    "EMAIL_HOST_PASSWORD", "EMAIL_HOST_PASSWORD", default=""
+)
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = _keychain_or_env(
+    "DEFAULT_FROM_EMAIL", "DEFAULT_FROM_EMAIL", default="webmaster@localhost"
+)
+
+# Where "new request" and "customer replied" notifications go.
+INTAKE_NOTIFY_EMAILS = _keychain_or_env_list("INTAKE_NOTIFY_EMAILS", "INTAKE_NOTIFY_EMAILS")
+
+BUSINESS_NAME = env("BUSINESS_NAME", default="Wrench on Wheels")
+
+# Public URL of the frontend, used for links inside emails.
+SITE_URL = (_keychain_or_env("SITE_URL", "SITE_URL", default="http://localhost:5177") or "").rstrip("/")
+
+# --- Captcha (Cloudflare Turnstile) -------------------------------------------
+# Leave unset to disable (local dev, tests). Set together with the frontend's
+# VITE_TURNSTILE_SITE_KEY.
+TURNSTILE_SECRET_KEY = _keychain_or_env("TURNSTILE_SECRET_KEY", "TURNSTILE_SECRET_KEY", default="")

@@ -74,6 +74,8 @@ export interface ServiceRequestPayload {
   other_description: string
   preferred_date: string | null
   notes: string
+  website?: string
+  captcha_token?: string
 }
 
 export interface ServiceRequestCreated {
@@ -81,6 +83,7 @@ export interface ServiceRequestCreated {
   request_type: RequestType
   estimate: Estimate | Record<string, never>
   preferred_date: string | null
+  claim_token: string | null
 }
 
 export interface DecodedVehicle {

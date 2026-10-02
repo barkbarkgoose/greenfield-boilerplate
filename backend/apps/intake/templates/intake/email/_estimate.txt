@@ -1,0 +1,7 @@
+{% if estimate.line_items %}Estimate (labor only, parts quoted separately):
+{% for item in estimate.line_items %}  - {{ item.name }}{% if item.quantity > 1 %} x{{ item.quantity }}{% endif %}: {% if item.quote_required %}to be quoted{% else %}${{ item.amount }}{% endif %}
+{% endfor %}{% for d in estimate.discounts %}  - {{ d.name }}: -${{ d.amount }}
+{% endfor %}  - Service call (travel): ${{ estimate.service_call_fee }}
+{% if estimate.emergency_fee != "0.00" %}  - Same-week emergency fee: ${{ estimate.emergency_fee }}
+{% endif %}  Estimated total: ${{ estimate.total }}{% if estimate.needs_custom_quote %} + quoted work{% endif %}
+{% endif %}

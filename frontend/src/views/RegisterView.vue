@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import PublicHeader from '@/components/PublicHeader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -10,24 +11,37 @@ const authStore = useAuthStore()
 const form = ref({
   name: '',
   email: '',
-  organization_name: '',
   password: ''
 })
 const isLoading = ref(false)
 const errorMessage = ref('')
 
+// Only follow in-app redirects (e.g. a claim link), never absolute URLs.
+const redirect = computed(() => {
+  const value = route.query.redirect
+  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') ? value : null
+})
+
+function firstError(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null
+  for (const value of Object.values(data as Record<string, unknown>)) {
+    if (typeof value === 'string') return value
+    if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+  }
+  return null
+}
+
 async function handleSubmit() {
   isLoading.value = true
   errorMessage.value = ''
-  
+
   try {
     await authStore.register(form.value)
-    const redirect = route.query.redirect
-    router.push(typeof redirect === 'string' ? redirect : '/dashboard')
+    router.push(redirect.value ?? authStore.homeRoute)
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'response' in error) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      errorMessage.value = err.response?.data?.detail || 'Registration failed. Please try again.'
+      const err = error as { response?: { data?: unknown } }
+      errorMessage.value = firstError(err.response?.data) || 'Registration failed. Please try again.'
     } else {
       errorMessage.value = 'Registration failed. Please try again.'
     }
@@ -35,92 +49,51 @@ async function handleSubmit() {
     isLoading.value = false
   }
 }
+
+const inputClass =
+  'mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40'
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-md w-full space-y-8">
-      <div>
-        <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Create your account
-        </h2>
-        <p class="mt-2 text-center text-sm text-gray-600">
-          Or
-          <router-link to="/login" class="font-medium text-blue-600 hover:text-blue-500">
-            sign in to your existing account
+  <div class="flex min-h-screen flex-col bg-slate-50">
+    <PublicHeader />
+    <div class="flex flex-1 items-center justify-center px-4 py-12">
+      <div class="w-full max-w-md rounded-3xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
+        <h1 class="text-2xl font-bold text-slate-900">Create your account</h1>
+        <p class="mt-2 text-sm text-slate-600">
+          Keep every car's repair history in one place, track your requests and message me directly.
+          Already have one?
+          <router-link :to="{ name: 'login', query: route.query }" class="font-semibold text-amber-700 hover:text-amber-600">
+            Sign in
           </router-link>
         </p>
-      </div>
 
-      <form class="mt-8 space-y-6" @submit.prevent="handleSubmit">
-        <div class="rounded-md shadow-sm -space-y-px">
+        <form class="mt-6 space-y-4" @submit.prevent="handleSubmit">
           <div>
-            <label for="name" class="sr-only">Full name</label>
-            <input
-              id="name"
-              v-model="form.name"
-              type="text"
-              required
-              class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-              placeholder="Full name"
-            />
+            <label for="name" class="block text-sm font-medium text-slate-700">Name</label>
+            <input id="name" v-model="form.name" type="text" autocomplete="name" required :class="inputClass" />
           </div>
           <div>
-            <label for="email-address" class="sr-only">Email address</label>
-            <input
-              id="email-address"
-              v-model="form.email"
-              type="email"
-              required
-              class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-              placeholder="Email address"
-            />
+            <label for="email-address" class="block text-sm font-medium text-slate-700">Email</label>
+            <input id="email-address" v-model="form.email" type="email" autocomplete="email" required :class="inputClass" />
           </div>
           <div>
-            <label for="organization_name" class="sr-only">Organization name</label>
-            <input
-              id="organization_name"
-              v-model="form.organization_name"
-              type="text"
-              required
-              class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-              placeholder="Organization name"
-            />
+            <label for="password" class="block text-sm font-medium text-slate-700">Password</label>
+            <input id="password" v-model="form.password" type="password" autocomplete="new-password" required minlength="8" :class="inputClass" />
+            <p class="mt-1 text-xs text-slate-500">At least 8 characters.</p>
           </div>
-          <div>
-            <label for="password" class="sr-only">Password</label>
-            <input
-              id="password"
-              v-model="form.password"
-              type="password"
-              required
-              minlength="8"
-              class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-              placeholder="Password (min 8 characters)"
-            />
-          </div>
-        </div>
 
-        <div v-if="errorMessage" class="rounded-md bg-red-50 p-4">
-          <p class="text-sm text-red-800">{{ errorMessage }}</p>
-        </div>
+          <p v-if="errorMessage" class="rounded-lg bg-red-50 p-3 text-sm text-red-800">{{ errorMessage }}</p>
 
-        <div>
           <button
             type="submit"
             :disabled="isLoading"
-            class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="w-full rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <span v-if="isLoading" class="absolute left-0 inset-y-0 flex items-center pl-3">
-              <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            </span>
-            {{ isLoading ? 'Creating account...' : 'Create account' }}
+            {{ isLoading ? 'Creating account…' : 'Create account' }}
           </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   </div>
 </template>

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { business } from '@/config/business'
 
 const router = useRouter()
 const route = useRoute()
@@ -26,14 +27,26 @@ const initials = computed(() => {
   return authStore.user?.email?.charAt(0).toUpperCase() || 'U'
 })
 
-const navItems = [
-  { name: 'Dashboard', path: '/dashboard' },
-]
+const navItems = computed(() =>
+  authStore.isStaff
+    ? [
+        { name: 'Bookings', path: '/dashboard' },
+        { name: 'Public site', path: '/' }
+      ]
+    : [
+        { name: 'My garage', path: '/account' },
+        { name: 'Book service', path: '/book' }
+      ]
+)
+
+function isActive(path: string) {
+  return path === '/' ? route.path === '/' : route.path.startsWith(path)
+}
 
 function handleLogout() {
   isMenuOpen.value = false
   authStore.logout()
-  router.push('/login')
+  router.push('/')
 }
 
 function closeMenu() {
@@ -55,18 +68,20 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex h-16 items-center justify-between">
         <!-- Logo -->
-        <router-link to="/dashboard" class="flex-shrink-0">
-          <span class="text-xl font-bold text-primary">App</span>
+        <router-link :to="authStore.homeRoute" class="flex-shrink-0">
+          <span class="hidden text-lg font-bold text-primary sm:inline">{{ business.name }}</span>
+          <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-400 text-sm font-black text-slate-900 sm:hidden" aria-hidden="true">{{ business.name.charAt(0) }}</span>
+          <span class="sr-only sm:hidden">{{ business.name }}</span>
         </router-link>
 
         <!-- Nav Links -->
-        <div class="hidden sm:flex sm:items-center sm:space-x-1">
+        <div class="flex items-center space-x-1">
           <router-link
             v-for="item in navItems"
             :key="item.path"
             :to="item.path"
-            class="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            :class="route.path === item.path 
+            class="whitespace-nowrap px-2.5 py-2 rounded-lg text-sm font-medium transition-colors sm:px-4"
+            :class="isActive(item.path)
               ? 'bg-primary text-white' 
               : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'"
           >
