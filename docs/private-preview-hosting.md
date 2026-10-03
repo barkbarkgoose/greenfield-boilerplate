@@ -262,6 +262,69 @@ to someone else to try.
 
 ---
 
+## 3b. If your domains are at Namecheap
+
+Nothing about the app, Fly or the GitHub Action changes. Only the DNS step does, and
+that decides which privacy option you can use.
+
+**Keep DNS at Namecheap** (simplest; use the in-app preview password, option B):
+
+1. `fly certs add preview.yourdomain.com` prints the records to create.
+2. In Namecheap → Domain List → Manage → Advanced DNS, add a `CNAME` record: host
+   `preview`, value `wrench-preview.fly.dev` (plus the `_acme-challenge` CNAME Fly asks
+   for, if any).
+3. Fly issues the HTTPS certificate on its own within a few minutes.
+
+Your main site, email (MX records) and everything else on the domain stay untouched.
+
+**Use Cloudflare for DNS** (needed for Cloudflare Access, option A): keep the domain
+*registered* at Namecheap, but change its nameservers to the two Cloudflare gives you
+(Namecheap → Domain → Nameservers → Custom DNS). Cloudflare's free plan only proxies a
+domain when it runs that domain's DNS. Proxying just one subdomain while Namecheap
+keeps DNS (a "CNAME setup") is a paid Cloudflare feature. Moving nameservers moves
+**all** of the domain's DNS: Cloudflare copies the existing records when you add the
+site, but check the MX and TXT records (email) before switching.
+
+**Tip:** if you'd rather not touch a domain you already use, buy a cheap separate one
+just for previews (e.g. `yourname-dev.com`) and put that one on Cloudflare. All your
+previews can live under it: `wrench.yourname-dev.com`, `next-idea.yourname-dev.com`.
+
+### What about Namecheap's own hosting?
+
+Namecheap shared hosting (cPanel) has a "Setup Python App" feature that can run Django,
+and a GitHub Action could deploy to it over SSH. It works for small sites, but it fights
+this setup:
+
+- No Docker. Python versions and packages depend on what the host offers.
+- Apps restart and get idled on their own schedule, which can kill the background thread
+  that computes parts estimates.
+- Process and memory limits are shared and not always documented.
+- Deploys mean SSH + `git pull` + `pip install` + `migrate` + touching a restart file:
+  more script to maintain, and harder to debug from GitHub than `flyctl deploy`.
+
+Fine for a static site or a simple PHP/WordPress site. For this app, Fly (or Render)
+is less work for about the same money.
+
+### What about GitHub Pages?
+
+It doesn't fit this project, for two reasons:
+
+1. **Static files only.** Pages can serve the built Vue app, but not Django. The
+   booking form, estimates, garage, invoices and dashboard all need the backend running
+   somewhere else, which brings back the split setup (CORS, an API URL baked in at
+   build time) from section 5.
+2. **Public.** Pages sites are visible to anyone with the URL, even from a private repo.
+   Restricting who can view a Pages site needs GitHub Enterprise Cloud.
+
+GitHub Pages is still a great choice for your smaller one-off things that are
+**pure front-end** (no server, no database, no logins) and fine to be public: landing
+pages, docs, demos, portfolio pieces. Those deploy for free from a GitHub Action with
+`actions/deploy-pages`, and a custom domain works with a Namecheap `CNAME` (subdomain)
+or `A` records (apex domain). For one-off things that need to be private, Cloudflare
+Pages with Access in front is the static equivalent of this doc's setup.
+
+---
+
 ## 4. One-time setup checklist
 
 1. Have Claude make the code changes in section 2 (on a branch, as usual).
@@ -278,6 +341,7 @@ to someone else to try.
 6. Load your parts prices: copy the CSV up with `fly ssh sftp`, then run
    `import_part_prices`, or use the Django admin.
 7. Privacy: set up Cloudflare Access (option A) or set `PREVIEW_PASSWORD` (option B).
+   Custom domain at Namecheap: see section 3b.
 8. On your phone, open the URL and "Add to Home Screen" for one-tap access.
 
 Day to day, there's nothing to do: Claude pushes, and the preview updates a few minutes
