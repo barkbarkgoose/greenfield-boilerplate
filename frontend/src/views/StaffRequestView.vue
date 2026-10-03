@@ -3,17 +3,20 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import EstimateBreakdown from '@/components/EstimateBreakdown.vue'
+import InvoiceEditor from '@/components/InvoiceEditor.vue'
 import MessageThread from '@/components/MessageThread.vue'
 import PartsEstimateCard from '@/components/PartsEstimateCard.vue'
 import { usePartsEstimate } from '@/composables/usePartsEstimate'
+import { mergeMessages, useLiveUpdates } from '@/composables/useLiveUpdates'
 import StatusBadge from '@/components/StatusBadge.vue'
 import {
   fetchStaffRequest,
+  pollStaffRequest,
   retryPartsEstimate,
   sendStaffMessage,
   updateStaffRequest
 } from '@/services/garage'
-import type { RequestStatus, StaffRequestDetail } from '@/types/garage'
+import type { Invoice, RequestStatus, StaffRequestDetail } from '@/types/garage'
 import { VEHICLE_TYPES } from '@/types/intake'
 import type { Estimate, VehicleType } from '@/types/intake'
 import {
@@ -96,13 +99,14 @@ async function save() {
       scheduled_for: fromDateTimeLocal(form.scheduled_for),
       completed_on: form.completed_on || null,
       odometer: form.odometer ? Number(form.odometer) : null,
-      final_total: form.final_total || null,
+      ...(invoicePublished.value ? {} : { final_total: form.final_total || null }),
       internal_notes: form.internal_notes,
       vehicle_type: form.vehicle_type,
       notify_customer: canNotify.value && form.notify_customer
     })
     const typeChanged = updated.vehicle_type !== request.value.vehicle_type
     request.value = { ...updated, messages: request.value.messages }
+    live.acknowledge(updated.updated_at)
     fillForm(updated)
     // A new vehicle type recalculates the parts estimate server-side.
     if (typeChanged) parts.start({ status: 'pending' })
@@ -124,8 +128,35 @@ async function save() {
 async function send(body: string) {
   if (!request.value) return
   const message = await sendStaffMessage(request.value.id, body)
-  request.value.messages.push(message)
+  request.value.messages = mergeMessages(request.value.messages, [message])
 }
+
+// A published invoice drives the final total.
+const invoicePublished = computed(() => !!request.value?.invoice?.published_at)
+
+async function onInvoiceSaved(invoice: Invoice | null) {
+  if (!request.value) return
+  // Saving an invoice can change the final total; reload, keeping form edits.
+  const fresh = await fetchStaffRequest(request.value.id)
+  request.value = { ...fresh, messages: mergeMessages(request.value.messages, fresh.messages), invoice }
+  form.final_total = fresh.final_total ?? ''
+  live.acknowledge(fresh.updated_at)
+}
+
+// New customer messages appear without a reload. Other changes (e.g. from
+// another tab) refresh the request but leave the Manage form alone.
+const live = useLiveUpdates({
+  poll: (afterId) => pollStaffRequest(request.value!.id, afterId),
+  messages: () => request.value?.messages,
+  onMessages: (messages) => {
+    if (request.value) request.value.messages = mergeMessages(request.value.messages, messages)
+  },
+  onChanged: async () => {
+    if (!request.value) return
+    const fresh = await fetchStaffRequest(request.value.id)
+    request.value = { ...fresh, messages: mergeMessages(request.value.messages, fresh.messages) }
+  }
+})
 
 async function copyVin() {
   if (request.value?.vin) await navigator.clipboard?.writeText(request.value.vin)
@@ -136,6 +167,7 @@ onMounted(async () => {
     request.value = await fetchStaffRequest(route.params.id as string)
     fillForm(request.value)
     parts.start(request.value.parts_estimate)
+    live.start(request.value.updated_at)
   } catch {
     loadError.value = true
   }
@@ -249,6 +281,21 @@ const labelClass = 'block text-sm font-medium text-slate-700'
             </p>
           </section>
 
+          <!-- Invoice -->
+          <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <h2 class="font-semibold text-slate-900">Invoice</h2>
+            <p class="mt-1 text-sm text-slate-500">
+              Add or remove work, enter what parts and shipping really cost, then publish. The customer sees it in their garage.
+            </p>
+            <InvoiceEditor
+              class="mt-4"
+              :request-id="request.id"
+              :can-email="canNotify"
+              :parts-estimate="parts.estimate.value"
+              @saved="onInvoiceSaved"
+            />
+          </section>
+
           <!-- Messages -->
           <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 class="font-semibold text-slate-900">Messages</h2>
@@ -291,7 +338,18 @@ const labelClass = 'block text-sm font-medium text-slate-700'
               </div>
               <div>
                 <label for="final_total" :class="labelClass">Final total</label>
-                <input id="final_total" v-model="form.final_total" type="number" min="0" step="0.01" inputmode="decimal" placeholder="$" :class="inputClass" />
+                <input
+                  id="final_total"
+                  v-model="form.final_total"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputmode="decimal"
+                  placeholder="$"
+                  :disabled="invoicePublished"
+                  :title="invoicePublished ? 'Set by the published invoice' : undefined"
+                  :class="[inputClass, invoicePublished && 'bg-slate-100 text-slate-500']"
+                />
               </div>
             </div>
             <div v-if="form.status === 'completed'">

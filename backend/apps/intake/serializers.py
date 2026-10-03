@@ -1,26 +1,17 @@
 """Intake app serializers."""
 
 import re
+from decimal import Decimal
 
 from django.utils import timezone
 from rest_framework import serializers
 
-from . import parts, pricing
+from . import invoicing, parts, pricing
 from .i18n import current_language, t
-from .models import RequestMessage, ServiceRequest, Vehicle, VehicleType
+from .models import InvoiceLine, RequestMessage, ServiceRequest, Vehicle, VehicleType
 
 # 17 characters, digits and capital letters except I, O and Q (ISO 3779).
 VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
-
-
-def service_list(services: dict) -> list[dict]:
-    """Stored ``{key: qty}`` -> ``[{key, name, quantity}]`` in catalog order."""
-    services = services or {}
-    return [
-        {"key": s.key, "name": s.name, "quantity": services[s.key]}
-        for s in pricing.SERVICES
-        if s.key in services
-    ]
 
 
 class ServiceItemSerializer(serializers.Serializer):
@@ -210,7 +201,7 @@ class RequestSummarySerializer(serializers.ModelSerializer):
         ]
 
     def get_services(self, obj):
-        return service_list(obj.services)
+        return pricing.service_list(obj.services)
 
     def get_unread_count(self, obj):
         # Annotated by the views: unread messages from the *other* side.
@@ -226,6 +217,7 @@ class CustomerRequestSerializer(RequestSummarySerializer):
     messages = MessageSerializer(many=True, read_only=True)
     vehicle = VehicleSummarySerializer(read_only=True)
     parts_estimate = serializers.SerializerMethodField()
+    invoice = serializers.SerializerMethodField()
 
     class Meta(RequestSummarySerializer.Meta):
         fields = RequestSummarySerializer.Meta.fields + [
@@ -241,11 +233,18 @@ class CustomerRequestSerializer(RequestSummarySerializer):
             "notes",
             "estimate",
             "parts_estimate",
+            "invoice",
             "messages",
+            "updated_at",
         ]
 
     def get_parts_estimate(self, obj):
         return parts.as_payload(obj)
+
+    def get_invoice(self, obj):
+        """Customers only see an invoice once it's published."""
+        invoice = invoicing.get_invoice(obj)
+        return invoicing.invoice_payload(invoice) if invoice and invoice.is_published else None
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -282,15 +281,19 @@ class StaffRequestSerializer(CustomerRequestSerializer):
             "internal_notes",
             "vehicle_type",
             "language",
-            "updated_at",
             "notify_customer",
         ]
         read_only_fields = [
             f
             for f in CustomerRequestSerializer.Meta.fields
-            + ["customer", "updated_at", "parts_estimate", "language"]
+            + ["customer", "updated_at", "parts_estimate", "invoice", "language"]
             if f not in {"status", "scheduled_for", "completed_on", "odometer", "final_total"}
         ]
+
+    def get_invoice(self, obj):
+        """Staff see the invoice draft too."""
+        invoice = invoicing.get_invoice(obj)
+        return invoicing.invoice_payload(invoice) if invoice else None
 
     def get_customer_request_count(self, obj):
         """How many requests this person has made: a quick repeat-customer signal."""
@@ -313,6 +316,10 @@ class StaffRequestSerializer(CustomerRequestSerializer):
 
     def update(self, instance, validated_data):
         validated_data.pop("notify_customer", None)
+        invoice = invoicing.get_invoice(instance)
+        if invoice and invoice.is_published:
+            # A published invoice sets the final total.
+            validated_data.pop("final_total", None)
         if (
             validated_data.get("status") == ServiceRequest.Status.COMPLETED
             and not validated_data.get("completed_on")
@@ -320,3 +327,44 @@ class StaffRequestSerializer(CustomerRequestSerializer):
         ):
             validated_data["completed_on"] = timezone.localdate()
         return super().update(instance, validated_data)
+
+
+# --- Invoices ------------------------------------------------------------------
+
+MAX_INVOICE_LINES = 60
+
+
+class InvoiceLineSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=InvoiceLine.Kind.choices)
+    description = serializers.CharField(max_length=200)
+    quantity = serializers.DecimalField(
+        max_digits=6, decimal_places=2, min_value=Decimal("0.01")
+    )
+    unit_price = serializers.DecimalField(max_digits=8, decimal_places=2)
+
+    def validate(self, attrs):
+        if attrs["unit_price"] < 0 and attrs["kind"] != InvoiceLine.Kind.ADJUSTMENT:
+            raise serializers.ValidationError(
+                {"unit_price": t("validation__invoice-line--negative")}
+            )
+        return attrs
+
+
+class InvoiceSerializer(serializers.Serializer):
+    """Staff input for an invoice; the whole invoice is sent on every save."""
+
+    services = ServiceItemSerializer(many=True, allow_empty=True)
+    charge_rush_fee = serializers.BooleanField(default=False)
+    lines = InvoiceLineSerializer(many=True, allow_empty=True)
+    note = serializers.CharField(max_length=2000, allow_blank=True, required=False, default="")
+    published = serializers.BooleanField(default=False)
+    notify_customer = serializers.BooleanField(default=False)
+
+    validate_services = staticmethod(_validate_services)
+
+    def validate_lines(self, value):
+        if len(value) > MAX_INVOICE_LINES:
+            raise serializers.ValidationError(
+                t("validation__invoice--too-many-lines", max=MAX_INVOICE_LINES)
+            )
+        return value

@@ -1,10 +1,13 @@
 import api from '@/services/api'
 import type { PartsEstimate } from '@/types/intake'
 import type {
+  Invoice,
+  InvoiceInput,
   Paginated,
   RequestDetail,
   RequestMessage,
   RequestSummary,
+  RequestUpdates,
   StaffRequestDetail,
   StaffRequestUpdate,
   StaffSummary,
@@ -84,4 +87,32 @@ export async function retryPartsEstimate(id: number): Promise<PartsEstimate | nu
   return (
     await api.post<{ parts_estimate: PartsEstimate | null }>(`/api/v1/manage/requests/${id}/parts-estimate/`)
   ).data.parts_estimate
+}
+
+// --- Live updates (polling) -------------------------------------------------------
+
+export async function pollMyRequest(id: number, afterId: number): Promise<RequestUpdates> {
+  return (await api.get<RequestUpdates>(`/api/v1/garage/requests/${id}/updates/`, { params: { after: afterId } })).data
+}
+
+export async function pollStaffRequest(id: number, afterId: number): Promise<RequestUpdates> {
+  return (await api.get<RequestUpdates>(`/api/v1/manage/requests/${id}/updates/`, { params: { after: afterId } })).data
+}
+
+// --- Invoices (staff) -------------------------------------------------------------
+
+export async function fetchInvoice(id: number): Promise<Invoice> {
+  return (await api.get<Invoice>(`/api/v1/manage/requests/${id}/invoice/`)).data
+}
+
+export async function previewInvoice(id: number, input: InvoiceInput): Promise<Invoice> {
+  return (await api.post<Invoice>(`/api/v1/manage/requests/${id}/invoice/preview/`, input)).data
+}
+
+export async function saveInvoice(id: number, input: InvoiceInput): Promise<Invoice> {
+  return (await api.put<Invoice>(`/api/v1/manage/requests/${id}/invoice/`, input)).data
+}
+
+export async function deleteInvoice(id: number): Promise<void> {
+  await api.delete(`/api/v1/manage/requests/${id}/invoice/`)
 }

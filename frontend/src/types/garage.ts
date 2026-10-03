@@ -67,7 +67,59 @@ export interface RequestDetail extends RequestSummary {
   notes: string
   estimate: Estimate | Record<string, never>
   parts_estimate: PartsEstimate | null
+  invoice: Invoice | null
   messages: RequestMessage[]
+  updated_at: string
+}
+
+export interface RequestUpdates {
+  messages: RequestMessage[]
+  updated_at: string
+}
+
+// --- Invoices ------------------------------------------------------------------
+
+export type InvoiceLineKind = 'part' | 'shipping' | 'labor' | 'adjustment'
+
+export const INVOICE_LINE_KINDS: InvoiceLineKind[] = ['part', 'shipping', 'labor', 'adjustment']
+
+export interface InvoiceLine {
+  kind: InvoiceLineKind
+  description: string
+  quantity: string
+  unit_price: string
+  amount: string
+}
+
+export interface InvoiceTotals {
+  jobs: string
+  parts: string
+  shipping: string
+  labor: string
+  adjustments: string
+  total: string
+}
+
+export interface Invoice {
+  exists: boolean
+  services: RequestService[]
+  charge_rush_fee: boolean
+  // Jobs priced like a booking estimate (bundles, deals, service call, rush fee).
+  labor: Estimate
+  lines: InvoiceLine[]
+  note: string
+  totals: InvoiceTotals
+  published_at: string | null
+  updated_at: string | null
+}
+
+export interface InvoiceInput {
+  services: { key: string; quantity: number }[]
+  charge_rush_fee: boolean
+  lines: Omit<InvoiceLine, 'amount'>[]
+  note: string
+  published: boolean
+  notify_customer: boolean
 }
 
 export interface StaffRequestDetail extends RequestDetail {
@@ -75,7 +127,6 @@ export interface StaffRequestDetail extends RequestDetail {
   customer_request_count: number
   internal_notes: string
   vehicle_type: VehicleType | ''
-  updated_at: string
 }
 
 export interface StaffRequestUpdate {

@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import PublicHeader from '@/components/PublicHeader.vue'
-import PublicFooter from '@/components/PublicFooter.vue'
 import { fetchCatalog } from '@/services/intake'
 import { formatMoney } from '@/utils/intake'
 import type { Catalog } from '@/types/intake'
@@ -34,8 +32,7 @@ watch(locale, load)
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-slate-50">
-    <PublicHeader />
+  <div class="flex flex-1 flex-col">
 
     <section class="landing-hero relative overflow-hidden bg-slate-900 text-white">
       <div class="absolute inset-0 opacity-20" aria-hidden="true">
@@ -187,7 +184,5 @@ watch(locale, load)
         </router-link>
       </div>
     </section>
-
-    <PublicFooter class="mt-auto" />
   </div>
 </template>

@@ -71,5 +71,12 @@
   "email-language__label--en": "Inglés",
   "email-language__label--es": "Español",
   "service__unit--axle": "eje",
-  "service__unit--job": "trabajo"
+  "service__unit--job": "trabajo",
+  "validation__invoice-line--negative": "Solo los ajustes pueden ser negativos.",
+  "validation__invoice--too-many-lines": "Una factura puede tener como máximo {max} líneas.",
+  "email__subject--customer-invoice": "Tu factura de la solicitud #{id}",
+  "email-invoice__kind--part": "Pieza",
+  "email-invoice__kind--shipping": "Envío",
+  "email-invoice__kind--labor": "Mano de obra",
+  "email-invoice__kind--adjustment": "Ajuste"
 }

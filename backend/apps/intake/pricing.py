@@ -320,6 +320,16 @@ def normalize_quantities(items: list[dict]) -> dict[str, int]:
     return quantities
 
 
+def service_list(services: dict) -> list[dict]:
+    """Stored ``{key: qty}`` -> ``[{key, name, quantity}]`` in catalog order."""
+    services = services or {}
+    return [
+        {"key": s.key, "name": s.name, "quantity": services[s.key]}
+        for s in SERVICES
+        if s.key in services
+    ]
+
+
 def scheduling(preferred_date: date | None, today: date) -> dict:
     if preferred_date is None:
         return {"days_out": None, "is_emergency": False, "short_notice": False}
@@ -333,11 +343,17 @@ def scheduling(preferred_date: date | None, today: date) -> dict:
     }
 
 
-def estimate(quantities: dict[str, int], preferred_date: date | None, today: date) -> dict:
+def estimate(
+    quantities: dict[str, int],
+    preferred_date: date | None,
+    today: date,
+    emergency: bool | None = None,
+) -> dict:
     """Price a set of services. Labor only; parts are quoted separately.
 
     Discounts apply in order: per-axle bundles, free add-ons, then the volume
-    rate on whatever labor remains.
+    rate on whatever labor remains. ``emergency`` overrides the rush fee that
+    the dates would imply (invoices use it: staff decide whether it applies).
     """
     line_items = []
     subtotal = Decimal("0.00")
@@ -413,6 +429,8 @@ def estimate(quantities: dict[str, int], preferred_date: date | None, today: dat
             )
 
     schedule = scheduling(preferred_date, today)
+    if emergency is not None:
+        schedule["is_emergency"] = emergency
     has_work = bool(line_items)
     service_call_fee = SERVICE_CALL_FEE if has_work else Decimal("0.00")
     emergency_fee = EMERGENCY_FEE if has_work and schedule["is_emergency"] else Decimal("0.00")

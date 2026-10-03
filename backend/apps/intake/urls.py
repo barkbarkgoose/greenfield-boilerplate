@@ -25,6 +25,11 @@ garage_urlpatterns = [
         views.MyRequestMessageView.as_view(),
         name="garage-request-messages",
     ),
+    path(
+        "requests/<int:pk>/updates/",
+        views.MyRequestUpdatesView.as_view(),
+        name="garage-request-updates",
+    ),
     path("claim/", views.ClaimRequestView.as_view(), name="garage-claim"),
 ]
 
@@ -41,5 +46,20 @@ staff_urlpatterns = [
         "requests/<int:pk>/messages/",
         views.StaffRequestMessageView.as_view(),
         name="staff-request-messages",
+    ),
+    path(
+        "requests/<int:pk>/updates/",
+        views.StaffRequestUpdatesView.as_view(),
+        name="staff-request-updates",
+    ),
+    path(
+        "requests/<int:pk>/invoice/",
+        views.StaffInvoiceView.as_view(),
+        name="staff-request-invoice",
+    ),
+    path(
+        "requests/<int:pk>/invoice/preview/",
+        views.StaffInvoicePreviewView.as_view(),
+        name="staff-request-invoice-preview",
     ),
 ]

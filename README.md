@@ -120,7 +120,9 @@ boilerplate/
   interceptor redirects to `/login`, so the UI never gets stuck on a dead session
 - **Custom User Model** with Organization FK
 - **Per-user settings** (`/api/v1/auth/settings/`) with key whitelisting,
-  input validation, and API keys encrypted at rest via `apps/users/crypto.py`
+  input validation, and API keys encrypted at rest via `apps/users/crypto.py`.
+  The AI provider and API key settings are hidden in this site's UI (it doesn't use
+  AI); the API still accepts them, so they can come back without a migration.
 - **CORS configured** for frontend at localhost:5177
 - **APPEND_SLASH=False** for clean API URLs
 
@@ -150,12 +152,16 @@ uv run --with-requirements requirements.txt python -m pytest
 | `/api/v1/garage/requests/` | GET | Yes | Customer's requests |
 | `/api/v1/garage/requests/<id>/` | GET | Yes | Request detail with messages |
 | `/api/v1/garage/requests/<id>/messages/` | POST | Yes | Add a note/question |
+| `/api/v1/garage/requests/<id>/updates/` | GET | Yes | New messages since `?after=<message id>`, plus `updated_at` (polled by the open page) |
 | `/api/v1/garage/claim/` | POST | Yes | Attach a guest request via its claim token |
 | `/api/v1/manage/summary/` | GET | Staff | Dashboard counts and upcoming appointments |
 | `/api/v1/manage/requests/` | GET | Staff | All requests; `status`, `q`, `unread`, `emergency`, `ordering`, `page` |
 | `/api/v1/manage/requests/<id>/` | GET/PATCH | Staff | Request detail / update status, appointment, notes |
 | `/api/v1/manage/requests/<id>/parts-estimate/` | POST | Staff | Recalculate a request's parts estimate |
 | `/api/v1/manage/requests/<id>/messages/` | POST | Staff | Reply to the customer (emails them) |
+| `/api/v1/manage/requests/<id>/updates/` | GET | Staff | New customer messages since `?after=<message id>` |
+| `/api/v1/manage/requests/<id>/invoice/` | GET/PUT/DELETE | Staff | The request's invoice (GET without one returns a draft from the requested jobs) |
+| `/api/v1/manage/requests/<id>/invoice/preview/` | POST | Staff | Price an invoice without saving it |
 
 ## Mobile Mechanic Site
 
@@ -166,13 +172,52 @@ uv run --with-requirements requirements.txt python -m pytest
 | `/` (`/es`) | Anyone | Landing page: services, labor prices, bundles, booking policy |
 | `/book` (`/es/book`) | Anyone | Intake form with live estimate; `?mode=callback` for "just contact me" |
 | `/account` | Customers | "My garage": each car with its repair history |
-| `/account/requests/:id` | Customers | Request details, appointment, notes/questions thread |
+| `/account/requests/:id` | Customers | Request details, appointment, invoice, notes/questions thread |
+| `/settings` | Signed in | Profile and language |
 | `/claim/:token` | Customers | Attaches a guest booking to the signed-in account |
 | `/dashboard` | Staff (`is_staff`) | Bookings dashboard: filters, search, unread, upcoming |
-| `/dashboard/requests/:id` | Staff | Manage status, appointment, odometer, final total, private notes; reply |
+| `/dashboard/requests/:id` | Staff | Manage status, appointment, odometer, private notes; build the invoice; reply |
 
 Make yourself staff with `python manage.py createsuperuser` (or tick `is_staff` in the
 Django admin). Customers create accounts at `/register`; no organization is needed.
+
+Every page shares one header (`SiteHeader.vue`) and footer, signed in or not. Signed-in
+people get an account menu; staff see "Dashboard" where customers see "My garage". A guest
+who taps "My garage" gets a dialog explaining the garage, with buttons to create an
+account or sign in (both come back to the garage afterwards).
+
+### Saved booking drafts
+
+The booking form saves itself in the browser as it's filled in (services, vehicle,
+date, contact details and notes), so a refresh, a trip to another page or closing the
+tab doesn't lose it. It's stored in `localStorage` on that device only, removed once the
+request is sent, and expires after 14 days. The form shows "Picked up where you left
+off" with a "Clear the form" button when it restores one. Code: `utils/intakeDraft.ts`.
+
+### Invoices
+
+On a request's dashboard page, the **Invoice** section builds the verified bill:
+
+- **Work done:** tick catalog jobs on or off. They're repriced like a booking, so bundles,
+  free add-ons and the volume rate still apply. You decide whether the rush fee applies.
+- **Lines:** parts at what you actually paid, shipping, extra labor (hours × rate,
+  for "other" work) and adjustments (a negative price for a discount). "+ Parts from
+  estimate" pre-fills part lines from the parts estimate for you to correct.
+- **Note to the customer**, shown on the invoice.
+
+A live preview shows exactly what the customer will see. **Save draft** keeps it private;
+**Publish to customer** shows it in their garage as a verified invoice (optionally
+emailing it) and sets the request's final total to the invoice total. Edits after
+publishing are visible as soon as you save; **Unpublish** hides it again. Logic:
+`backend/apps/intake/invoicing.py`.
+
+### Live updates
+
+An open request page (customer or staff) checks for new messages every 10 seconds
+while the tab is visible, and reloads the request when something else changed (status,
+appointment, invoice). This is polling, not push: it works on any Django server with no
+extra infrastructure. `docs/realtime-messaging.md` explains the options for instant
+updates (Server-Sent Events or WebSockets) if you ever want them.
 
 ### How bookings reach a customer's garage
 
@@ -249,6 +294,7 @@ Import it to try it out, then replace it with your own research:
 | Customer adds a note | `INTAKE_NOTIFY_EMAILS` |
 | You reply | The customer |
 | You change status/appointment with "Email the customer" ticked | The customer |
+| You publish an invoice with "Email the invoice" ticked | The customer |
 
 Local development prints emails to the backend console. For production, set `SITE_URL`,
 `INTAKE_NOTIFY_EMAILS`, `DEFAULT_FROM_EMAIL`, `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_HOST_USER`
@@ -268,14 +314,14 @@ Emails are sent inline and failures are logged, never shown to the customer.
 
 Customers can use the site in English or Spanish. What's translated:
 
-- **Customer pages:** landing page, booking form, garage, request pages, sign in/up,
-  header/footer, parts estimate.
+- **Customer pages:** landing page, booking form, garage, request pages, invoices,
+  sign in/up, profile & settings, header/footer, parts estimate.
 - **Server text:** service names, deals, discount lines, error messages, email subjects.
 - **Customer emails:** sent in the language the customer booked in.
 
 Your side stays English: the staff dashboard, your notification emails (which say which
-language the customer used), and the Django admin. Messages customers type are shown as
-written.
+language the customer used), and the Django admin. Messages customers type, and the
+invoice lines and notes you type, are shown as written.
 
 ### Where the text lives
 

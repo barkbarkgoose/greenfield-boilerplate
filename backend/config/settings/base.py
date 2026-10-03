@@ -163,6 +163,8 @@ REST_FRAMEWORK = {
         "intake_message": "30/hour",
         "intake_claim": "20/hour",
         "intake_parts": "240/hour",
+        # Open garage pages check for replies every ~15s while visible.
+        "garage_poll": "1200/hour",
     },
 }
 

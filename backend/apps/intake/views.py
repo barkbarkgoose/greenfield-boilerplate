@@ -16,7 +16,7 @@ from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import notifications, parts, pricing
+from . import invoicing, notifications, parts, pricing
 from .authentication import OptionalJWTAuthentication
 from .captcha import check_human
 from .i18n import t
@@ -24,6 +24,7 @@ from .models import RequestMessage, ServiceRequest, Vehicle, VehicleType, hash_c
 from .serializers import (
     CustomerRequestSerializer,
     EstimateSerializer,
+    InvoiceSerializer,
     MessageSerializer,
     RequestSummarySerializer,
     ServiceRequestSerializer,
@@ -46,6 +47,28 @@ def _mark_read(service_request: ServiceRequest, from_staff: bool) -> None:
     service_request.messages.filter(from_staff=from_staff, read_at__isnull=True).update(
         read_at=timezone.now()
     )
+
+
+def _updates(service_request: ServiceRequest, query_params, viewer_is_staff: bool) -> dict:
+    """New messages since ``?after=<message id>`` plus the request's last change.
+
+    Open request pages poll this so replies show up without a reload. When
+    ``updated_at`` moves (status, appointment, invoice...) the page refetches
+    the whole request.
+    """
+    try:
+        after = int(query_params.get("after") or 0)
+    except ValueError:
+        after = 0
+    messages = list(
+        service_request.messages.filter(id__gt=after).select_related("author", "request")
+    )
+    # The viewer is looking at the thread, so the other side's messages are read.
+    _mark_read(service_request, from_staff=not viewer_is_staff)
+    return {
+        "messages": MessageSerializer(messages, many=True).data,
+        "updated_at": service_request.updated_at,
+    }
 
 
 # --- Public --------------------------------------------------------------------
@@ -212,6 +235,15 @@ class MyRequestMessageView(APIView):
         return Response(MessageSerializer(message).data, status=status.HTTP_201_CREATED)
 
 
+class MyRequestUpdatesView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_scope = "garage_poll"
+
+    def get(self, request, pk):
+        service_request = get_object_or_404(ServiceRequest, pk=pk, customer=request.user)
+        return Response(_updates(service_request, request.query_params, viewer_is_staff=False))
+
+
 class ClaimRequestView(APIView):
     """Attach a guest request to the signed-in account using its emailed token."""
 
@@ -357,3 +389,54 @@ class StaffRequestMessageView(APIView):
         message = serializer.save(request=service_request, author=request.user, from_staff=True)
         transaction.on_commit(lambda: notifications.notify_staff_reply(message))
         return Response(MessageSerializer(message).data, status=status.HTTP_201_CREATED)
+
+
+class StaffRequestUpdatesView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request, pk):
+        service_request = get_object_or_404(ServiceRequest, pk=pk)
+        return Response(_updates(service_request, request.query_params, viewer_is_staff=True))
+
+
+class StaffInvoiceView(APIView):
+    """The verified invoice for a request.
+
+    GET returns the saved invoice, or a draft built from the requested jobs
+    (``exists: false``). PUT saves the whole invoice; DELETE discards it.
+    """
+
+    permission_classes = [IsAdminUser]
+
+    def get(self, request, pk):
+        service_request = get_object_or_404(ServiceRequest, pk=pk)
+        invoice = invoicing.get_invoice(service_request)
+        if invoice is None:
+            return Response(invoicing.draft_payload(service_request))
+        return Response(invoicing.invoice_payload(invoice))
+
+    def put(self, request, pk):
+        service_request = get_object_or_404(ServiceRequest, pk=pk)
+        serializer = InvoiceSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        invoice, just_published = invoicing.save(service_request, serializer.validated_data)
+        if just_published and serializer.validated_data["notify_customer"]:
+            transaction.on_commit(lambda: notifications.notify_invoice(service_request))
+        return Response(invoicing.invoice_payload(invoice))
+
+    def delete(self, request, pk):
+        service_request = get_object_or_404(ServiceRequest, pk=pk)
+        invoicing.delete(service_request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class StaffInvoicePreviewView(APIView):
+    """Price an invoice as it's being edited, without saving it."""
+
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, pk):
+        get_object_or_404(ServiceRequest, pk=pk)
+        serializer = InvoiceSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(invoicing.preview(serializer.validated_data))

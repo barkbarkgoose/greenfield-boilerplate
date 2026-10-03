@@ -5,33 +5,32 @@ import { currentLocale, isLocale, setLocale } from '@/i18n'
 import { applyPageMeta } from '@/i18n/seo'
 
 const routes: RouteRecordRaw[] = [
-  // Public, customer-facing pages: no account needed. `public` pages render
-  // their own header instead of the signed-in navbar. `localized` pages also
+  // Public, customer-facing pages: no account needed. `localized` pages also
   // have a Spanish address (/es, /es/book) for search engines; every other
   // page follows the visitor's saved language. See README "Translations".
   {
     path: '/:locale(es)?',
     name: 'home',
     component: () => import('@/views/LandingView.vue'),
-    meta: { public: true, localized: true }
+    meta: { localized: true }
   },
   {
     path: '/:locale(es)?/book',
     name: 'book',
     component: () => import('@/views/IntakeView.vue'),
-    meta: { public: true, localized: true }
+    meta: { localized: true }
   },
   {
     path: '/login',
     name: 'login',
     component: () => import('@/views/LoginView.vue'),
-    meta: { requiresGuest: true, public: true }
+    meta: { requiresGuest: true }
   },
   {
     path: '/register',
     name: 'register',
     component: () => import('@/views/RegisterView.vue'),
-    meta: { requiresGuest: true, public: true }
+    meta: { requiresGuest: true }
   },
 
   // Customers: their garage (vehicles + repair history) and request threads.

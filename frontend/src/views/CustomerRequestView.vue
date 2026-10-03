@@ -3,11 +3,13 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import EstimateBreakdown from '@/components/EstimateBreakdown.vue'
+import InvoiceCard from '@/components/InvoiceCard.vue'
 import MessageThread from '@/components/MessageThread.vue'
 import PartsEstimateCard from '@/components/PartsEstimateCard.vue'
 import { usePartsEstimate } from '@/composables/usePartsEstimate'
+import { mergeMessages, useLiveUpdates } from '@/composables/useLiveUpdates'
 import StatusBadge from '@/components/StatusBadge.vue'
-import { fetchMyRequest, sendCustomerMessage } from '@/services/garage'
+import { fetchMyRequest, pollMyRequest, sendCustomerMessage } from '@/services/garage'
 import type { RequestDetail } from '@/types/garage'
 import type { Estimate } from '@/types/intake'
 import { formatDate, formatDateTime, formatMoney } from '@/utils/intake'
@@ -28,13 +30,28 @@ const vehicleLabel = computed(() => request.value?.vehicle?.label || request.val
 async function send(body: string) {
   if (!request.value) return
   const message = await sendCustomerMessage(request.value.id, body)
-  request.value.messages.push(message)
+  request.value.messages = mergeMessages(request.value.messages, [message])
 }
+
+// Replies, status changes and the invoice show up without a reload.
+const live = useLiveUpdates({
+  poll: (afterId) => pollMyRequest(request.value!.id, afterId),
+  messages: () => request.value?.messages,
+  onMessages: (messages) => {
+    if (request.value) request.value.messages = mergeMessages(request.value.messages, messages)
+  },
+  onChanged: async () => {
+    const fresh = await fetchMyRequest(route.params.id as string)
+    request.value = { ...fresh, messages: mergeMessages(request.value?.messages ?? [], fresh.messages) }
+    parts.start(fresh.parts_estimate)
+  }
+})
 
 onMounted(async () => {
   try {
     request.value = await fetchMyRequest(route.params.id as string)
     parts.start(request.value.parts_estimate)
+    live.start(request.value.updated_at)
   } catch {
     loadError.value = true
   }
@@ -63,6 +80,11 @@ onMounted(async () => {
 
       <div class="mt-6 grid gap-6 md:grid-cols-[1fr_18rem]">
         <div class="space-y-6">
+          <section v-if="request.invoice" class="garage-invoice rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <h2 class="font-semibold text-slate-900">{{ t('garage-request__invoice-title') }}</h2>
+            <InvoiceCard class="mt-2" :invoice="request.invoice" />
+          </section>
+
           <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 class="font-semibold text-slate-900">{{ t('garage-request__messages-title') }}</h2>
             <p class="mt-1 text-sm text-slate-500">{{ t('garage-request__messages-intro') }}</p>
@@ -106,7 +128,7 @@ onMounted(async () => {
             </p>
           </section>
 
-          <section v-if="estimate || request.final_total" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <section v-if="!request.invoice && (estimate || request.final_total)" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 class="font-semibold text-slate-900">{{ request.final_total ? t('garage-request__total-title--final') : t('garage-request__total-title') }}</h2>
             <p v-if="request.final_total" class="mt-2 text-2xl font-bold text-slate-900">{{ formatMoney(request.final_total) }}</p>
             <EstimateBreakdown
@@ -118,7 +140,7 @@ onMounted(async () => {
             <p v-if="!request.final_total && !parts.estimate.value" class="mt-2 text-xs text-slate-500">{{ t('garage-request__labor-note') }}</p>
           </section>
 
-          <section v-if="parts.estimate.value && !request.final_total" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <section v-if="parts.estimate.value && !request.final_total && !request.invoice" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 class="mb-3 font-semibold text-slate-900">{{ t('garage-request__parts-title') }}</h2>
             <PartsEstimateCard
               :estimate="parts.estimate.value"

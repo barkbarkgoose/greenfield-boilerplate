@@ -3,8 +3,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import axios from 'axios'
-import PublicHeader from '@/components/PublicHeader.vue'
-import PublicFooter from '@/components/PublicFooter.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import PartsEstimateCard from '@/components/PartsEstimateCard.vue'
 import { usePartsEstimate } from '@/composables/usePartsEstimate'
@@ -20,6 +18,7 @@ import {
   submitServiceRequest
 } from '@/services/intake'
 import { VIN_PATTERN, formatDate, formatMoney, isoDateFromToday, normalizeVin } from '@/utils/intake'
+import { DRAFT_FIELDS, clearDraft, isEmptyDraft, loadDraft, saveDraft } from '@/utils/intakeDraft'
 import type {
   Catalog,
   Estimate,
@@ -96,6 +95,63 @@ function toggleService(key: string) {
 }
 
 const minDate = isoDateFromToday(0)
+
+// --- Draft ------------------------------------------------------------------
+// The form is saved in this browser as it's filled in (see utils/intakeDraft),
+// so a refresh or a detour to another page doesn't lose it.
+
+const draftRestored = ref(false)
+let draftTimer: ReturnType<typeof setTimeout> | undefined
+
+function currentDraft() {
+  return {
+    form: Object.fromEntries(DRAFT_FIELDS.map((field) => [field, form[field]])),
+    selected: { ...selected }
+  }
+}
+
+function persistDraft() {
+  clearTimeout(draftTimer)
+  // Once sent, the form isn't a draft any more.
+  if (submitted.value) return
+  const draft = currentDraft()
+  if (isEmptyDraft(draft, { preferred_date: isoDateFromToday(14) })) {
+    clearDraft()
+  } else {
+    saveDraft(draft)
+  }
+}
+
+function restoreDraft() {
+  const draft = loadDraft()
+  if (!draft) return
+  for (const field of DRAFT_FIELDS) {
+    const value = draft.form[field]
+    if (value === undefined) continue
+    // A saved date that has since passed falls back to the default.
+    if (field === 'preferred_date' && value < minDate) continue
+    ;(form as Record<string, string>)[field] = value
+  }
+  Object.assign(selected, draft.selected)
+  draftRestored.value = !isEmptyDraft(currentDraft(), { preferred_date: isoDateFromToday(14) })
+}
+
+function clearForm() {
+  startOver()
+  Object.assign(form, { name: '', phone: '', email: '', service_address: '' })
+  clearDraft()
+  draftRestored.value = false
+}
+
+watch([form, selected], () => {
+  clearTimeout(draftTimer)
+  draftTimer = setTimeout(persistDraft, 300)
+}, { deep: true })
+
+// Save right away when leaving: route change, refresh or closing the tab.
+onBeforeUnmount(persistDraft)
+onMounted(() => window.addEventListener('pagehide', persistDraft))
+onBeforeUnmount(() => window.removeEventListener('pagehide', persistDraft))
 
 // --- VIN ------------------------------------------------------------------
 
@@ -255,6 +311,9 @@ async function handleSubmit() {
       captcha_token: captchaToken.value
     })
     submittedVehicle.value = [form.vehicle_year, form.vehicle_make, form.vehicle_model].filter(Boolean).join(' ')
+    clearTimeout(draftTimer)
+    clearDraft()
+    draftRestored.value = false
     if (submitted.value.parts_estimate_status === 'pending') partsEstimate.start({ status: 'pending' })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   } catch (error) {
@@ -295,11 +354,12 @@ function startOver() {
 }
 
 onMounted(async () => {
+  restoreDraft()
   if (typeof route.query.vin === 'string') form.vin = route.query.vin
 
   if (authStore.isAuthenticated && !authStore.isStaff) {
-    form.name = authStore.user?.name ?? ''
-    form.email = authStore.user?.email ?? ''
+    form.name ||= authStore.user?.name ?? ''
+    form.email ||= authStore.user?.email ?? ''
     fetchMyVehicles()
       .then((vehicles) => {
         garage.value = vehicles
@@ -316,6 +376,12 @@ async function loadCatalog() {
   try {
     catalog.value = await fetchCatalog()
     catalogError.value = false
+    // Drop saved selections the catalog no longer offers.
+    for (const [key, quantity] of Object.entries(selected)) {
+      const service = catalog.value.services.find((s) => s.key === key)
+      if (!service) delete selected[key]
+      else if (quantity > service.max_quantity) selected[key] = service.max_quantity
+    }
   } catch {
     catalogError.value = true
   }
@@ -329,8 +395,7 @@ const labelClass = 'block text-sm font-medium text-slate-700'
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-slate-50">
-    <PublicHeader />
+  <div class="flex flex-1 flex-col">
 
     <div class="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6">
       <!-- Confirmation -->
@@ -411,6 +476,11 @@ const labelClass = 'block text-sm font-medium text-slate-700'
             {{ mode === 'booking' ? t('intake-header__intro--booking') : t('intake-header__intro--callback') }}
           </p>
         </div>
+
+        <p v-if="draftRestored" class="intake-draft mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-sky-50 px-4 py-2.5 text-sm text-sky-900 ring-1 ring-sky-200" role="status">
+          <span>{{ t('intake-draft__restored') }}</span>
+          <button type="button" class="font-semibold underline hover:text-sky-700" @click="clearForm">{{ t('intake-draft__clear') }}</button>
+        </p>
 
         <div class="intake-mode mt-6 inline-flex rounded-xl bg-slate-200 p-1" role="tablist" :aria-label="t('intake-mode__label')">
           <button
@@ -766,7 +836,5 @@ const labelClass = 'block text-sm font-medium text-slate-700'
         </form>
       </template>
     </div>
-
-    <PublicFooter />
   </div>
 </template>

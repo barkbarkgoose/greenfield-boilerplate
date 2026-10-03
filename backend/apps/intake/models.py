@@ -2,11 +2,14 @@
 
 import hashlib
 import secrets
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
 from django.db import models
 
 from . import pricing
+
+CENTS = Decimal("0.01")
 
 
 class Vehicle(models.Model):
@@ -227,3 +230,61 @@ class RequestMessage(models.Model):
     def __str__(self) -> str:
         who = "Mechanic" if self.from_staff else "Customer"
         return f"{who} on #{self.request_id}: {self.body[:40]}"
+
+
+class Invoice(models.Model):
+    """The verified bill for a request: the work actually done and real parts cost.
+
+    Staff build it from the requested jobs (repriced by ``pricing.estimate``,
+    so bundles and deals still apply) plus their own lines for parts at cost,
+    shipping, extra labor and adjustments. Customers only see it once
+    ``published_at`` is set; see invoicing.py.
+    """
+
+    request = models.OneToOneField(
+        ServiceRequest, on_delete=models.CASCADE, related_name="invoice"
+    )
+    services = models.JSONField(default=dict, blank=True, help_text="Service key -> quantity.")
+    charge_rush_fee = models.BooleanField(default=False)
+    # Labor priced from ``services`` (same shape as ServiceRequest.estimate).
+    labor = models.JSONField(default=dict, blank=True)
+    note = models.TextField(blank=True, help_text="Shown to the customer.")
+    total = models.DecimalField(max_digits=9, decimal_places=2, default=0)
+    published_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"Invoice for #{self.request_id}: ${self.total}"
+
+    @property
+    def is_published(self) -> bool:
+        return self.published_at is not None
+
+
+class InvoiceLine(models.Model):
+    """One line staff add to an invoice: a part, shipping, extra labor or an adjustment."""
+
+    class Kind(models.TextChoices):
+        PART = "part", "Part"
+        SHIPPING = "shipping", "Shipping"
+        LABOR = "labor", "Extra labor"
+        ADJUSTMENT = "adjustment", "Adjustment"
+
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="lines")
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    description = models.CharField(max_length=200)
+    quantity = models.DecimalField(max_digits=6, decimal_places=2, default=1)
+    # Negative only for adjustments (e.g. a discount).
+    unit_price = models.DecimalField(max_digits=8, decimal_places=2)
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()}: {self.description}"
+
+    @property
+    def amount(self):
+        return (self.quantity * self.unit_price).quantize(CENTS, rounding=ROUND_HALF_UP)

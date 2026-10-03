@@ -71,5 +71,12 @@
   "email-language__label--en": "English",
   "email-language__label--es": "Spanish",
   "service__unit--axle": "axle",
-  "service__unit--job": "job"
+  "service__unit--job": "job",
+  "validation__invoice-line--negative": "Only adjustments can be negative.",
+  "validation__invoice--too-many-lines": "An invoice can have at most {max} lines.",
+  "email__subject--customer-invoice": "Your invoice for request #{id}",
+  "email-invoice__kind--part": "Part",
+  "email-invoice__kind--shipping": "Shipping",
+  "email-invoice__kind--labor": "Labor",
+  "email-invoice__kind--adjustment": "Adjustment"
 }

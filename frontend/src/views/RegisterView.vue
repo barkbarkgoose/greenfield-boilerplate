@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
-import PublicHeader from '@/components/PublicHeader.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -57,8 +56,7 @@ const inputClass =
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-slate-50">
-    <PublicHeader />
+  <div class="flex flex-1 flex-col">
     <div class="flex flex-1 items-center justify-center px-4 py-12">
       <div class="w-full max-w-md rounded-3xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
         <h1 class="text-2xl font-bold text-slate-900">{{ t('auth-register__title') }}</h1>

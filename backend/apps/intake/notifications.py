@@ -151,3 +151,27 @@ def notify_status_change(req: ServiceRequest) -> None:
         language,
         reply_to=_owner_emails(),
     )
+
+
+def notify_invoice(req: ServiceRequest) -> None:
+    """Send the customer their invoice once it's published."""
+    from . import invoicing  # invoicing -> serializers -> notifications chain
+
+    invoice = invoicing.get_invoice(req)
+    if invoice is None or not invoice.is_published:
+        return
+    language = normalize(req.language)
+    with translation.override(language):
+        data = invoicing.invoice_payload(invoice)
+    lines = [
+        {**line, "kind_label": t(f"email-invoice__kind--{line['kind']}", language)}
+        for line in data["lines"]
+    ]
+    _send(
+        t("email__subject--customer-invoice", language, id=req.id),
+        "customer_invoice",
+        _context(req, language, invoice=data, labor=data["labor"], lines=lines),
+        [req.email],
+        language,
+        reply_to=_owner_emails(),
+    )

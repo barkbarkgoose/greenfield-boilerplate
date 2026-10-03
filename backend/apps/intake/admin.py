@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from .models import PartPriceExample, RequestMessage, ServiceRequest, Vehicle
+from .models import Invoice, InvoiceLine, PartPriceExample, RequestMessage, ServiceRequest, Vehicle
 
 
 class RequestMessageInline(admin.TabularInline):
@@ -69,3 +69,29 @@ class PartPriceExampleAdmin(admin.ModelAdmin):
     list_filter = ["service", "vehicle_type", "source"]
     search_fields = ["vehicle_make", "part_brand", "description", "source"]
     list_per_page = 100
+
+
+class InvoiceLineInline(admin.TabularInline):
+    model = InvoiceLine
+    extra = 0
+    fields = ["kind", "description", "quantity", "unit_price"]
+    readonly_fields = fields
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    """Read-only: edit invoices from the dashboard so totals are recalculated."""
+
+    list_display = ["request", "total", "published_at", "updated_at"]
+    readonly_fields = [
+        "request", "services", "charge_rush_fee", "labor", "note", "total",
+        "published_at", "created_at", "updated_at",
+    ]  # fmt: skip
+    inlines = [InvoiceLineInline]
+
+    def has_add_permission(self, request):
+        return False

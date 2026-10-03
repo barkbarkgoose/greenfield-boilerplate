@@ -1,0 +1,23 @@
+{% autoescape off %}Hola {{ req.name }}:
+
+Esta es la factura final de tu solicitud #{{ req.id }}{% if req.vehicle_label %} ({{ req.vehicle_label }}){% endif %}.
+{% if labor.line_items %}
+Mano de obra:
+{% for item in labor.line_items %}  - {{ item.name }}{% if item.quantity > 1 %} x{{ item.quantity }}{% endif %}: {% if item.quote_required %}ver abajo{% else %}${{ item.amount }}{% endif %}
+{% endfor %}{% for d in labor.discounts %}  - {{ d.name }}: -${{ d.amount }}
+{% endfor %}  - Visita a domicilio (traslado): ${{ labor.service_call_fee }}
+{% if labor.emergency_fee != "0.00" %}  - Cargo por urgencia (misma semana): ${{ labor.emergency_fee }}
+{% endif %}{% endif %}{% if lines %}
+Piezas y otros cargos (piezas al costo, sin margen):
+{% for line in lines %}  - {{ line.kind_label }}: {{ line.description }}{% if line.quantity != "1" %} x{{ line.quantity }}{% endif %}: ${{ line.amount }}
+{% endfor %}{% endif %}
+Total: ${{ invoice.totals.total }}
+{% if invoice.note %}
+{{ invoice.note }}
+{% endif %}
+{% if req.customer_id %}Detalles: {{ site_url }}/account/requests/{{ req.id }}?lang=es
+{% endif %}
+¿Preguntas? Solo responde a este correo.
+
+{{ business_name }}
+{% endautoescape %}
