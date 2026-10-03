@@ -172,7 +172,7 @@ uv run --with-requirements requirements.txt python -m pytest
 | `/` (`/es`) | Anyone | Landing page: services, labor prices, bundles, booking policy |
 | `/book` (`/es/book`) | Anyone | Intake form with live estimate; `?mode=callback` for "just contact me" |
 | `/account` | Customers | "My garage": each car with its repair history |
-| `/account/requests/:id` | Customers | Request details, appointment, invoice, notes/questions thread |
+| `/account/requests/:id` | Customers | Request details, appointment, invoice (plus a message thread when messaging is on) |
 | `/settings` | Signed in | Profile and language |
 | `/claim/:token` | Customers | Attaches a guest booking to the signed-in account |
 | `/dashboard` | Staff (`is_staff`) | Bookings dashboard: filters, search, unread, upcoming |
@@ -211,13 +211,38 @@ emailing it) and sets the request's final total to the invoice total. Edits afte
 publishing are visible as soon as you save; **Unpublish** hides it again. Logic:
 `backend/apps/intake/invoicing.py`.
 
-### Live updates
+### Contact consent
 
-An open request page (customer or staff) checks for new messages every 10 seconds
-while the tab is visible, and reloads the request when something else changed (status,
-appointment, invoice). This is polling, not push: it works on any Django server with no
-extra infrastructure. `docs/realtime-messaging.md` explains the options for instant
-updates (Server-Sent Events or WebSockets) if you ever want them.
+Every request needs a phone number and a ticked box agreeing to be contacted by call,
+text or email **about that request**. A second, optional box opts in to occasional
+deals and maintenance reminders ("I promise not to spam you, and this isn't
+automated"). Each request stores `contact_consent`, `marketing_consent`,
+`consent_at` and `consent_version`. Staff see both on the request page and in the
+new-request email; staff can't change them.
+
+- **Changing the checkbox wording:** edit `intake-consent__*` in both
+  `frontend/src/i18n/locales/*.json` and bump `CONSENT_VERSION` in
+  `backend/apps/intake/serializers.py`, so each request records which wording it agreed to.
+- **Promotions list:** Django admin → Service requests → filter "Marketing consent: Yes"
+  → select all → action "Export contacts (CSV)". Only text or email people who opted
+  in, and honor STOP replies.
+
+The contact box only covers messages about that request. Promotions need the separate,
+optional box, and the contact box doesn't cover them.
+
+### Messaging (off for launch)
+
+The message thread on request pages, and the live-update polling that comes with it,
+is **off by default**: customers call or text instead, and emails cover confirmations,
+status changes and invoices. The code, data and tests stay in place. To turn it back
+on, set `INTAKE_MESSAGING_ENABLED=1` (env or keychain) and restart. The threads, the
+dashboard's "Unread messages" tile and the polling then reappear on their own. When
+on, an open request page checks for new messages every 10 seconds while the tab is
+visible. `docs/realtime-messaging.md` covers that, and instant alternatives.
+
+Some customer-facing copy was reworded so it doesn't promise on-site messaging (the
+sign-in/sign-up intros, the guest confirmation, the garage dialog, the confirmation
+email). Revisit those when turning messaging back on.
 
 ### How bookings reach a customer's garage
 
@@ -291,8 +316,8 @@ Import it to try it out, then replace it with your own research:
 | Event | Goes to |
 |-------|---------|
 | New booking / contact request | `INTAKE_NOTIFY_EMAILS` (you) and the customer (confirmation + claim link) |
-| Customer adds a note | `INTAKE_NOTIFY_EMAILS` |
-| You reply | The customer |
+| Customer adds a note (messaging on) | `INTAKE_NOTIFY_EMAILS` |
+| You reply (messaging on) | The customer |
 | You change status/appointment with "Email the customer" ticked | The customer |
 | You publish an invoice with "Email the invoice" ticked | The customer |
 

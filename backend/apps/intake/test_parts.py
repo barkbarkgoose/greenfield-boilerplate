@@ -43,6 +43,7 @@ def payload(**overrides):
     data = {
         "name": "Pat",
         "phone": "555-0100",
+        "contact_consent": True,
         "vin": VIN,
         "services": [{"key": "brake_pads", "quantity": 2}, {"key": "oil_change"}],
         "preferred_date": (timezone.localdate() + timedelta(days=20)).isoformat(),

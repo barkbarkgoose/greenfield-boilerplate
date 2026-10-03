@@ -20,3 +20,7 @@ DATABASES = {
         "NAME": ":memory:",
     }
 }
+
+# Message threads are off by default for launch; the tests cover them on, and
+# turn them off explicitly where that's what's being tested.
+INTAKE_MESSAGING_ENABLED = True

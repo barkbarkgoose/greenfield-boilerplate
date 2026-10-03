@@ -1,5 +1,8 @@
 # Real-time messages: what's in place and how to go further
 
+> **Messaging is off for launch** (`INTAKE_MESSAGING_ENABLED`, default off; see the
+> README's "Messaging" section). Everything below applies once it's switched back on.
+
 ## What happens today
 
 An open request page checks the server every 10 seconds while the tab is visible:

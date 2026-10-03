@@ -183,6 +183,15 @@ class ServiceRequest(models.Model):
         max_length=12, choices=PartsStatus.choices, blank=True, default=PartsStatus.NONE
     )
 
+    # Consent from the form's checkboxes. ``contact_consent`` (calls/texts about
+    # this request) is required to submit; ``marketing_consent`` (occasional
+    # promotions by text/email) is optional. ``consent_version`` records which
+    # checkbox wording they agreed to (``CONSENT_VERSION`` in serializers.py).
+    contact_consent = models.BooleanField(default=False)
+    marketing_consent = models.BooleanField(default=False)
+    consent_version = models.CharField(max_length=20, blank=True)
+    consent_at = models.DateTimeField(null=True, blank=True)
+
     # Lets a guest attach this request to an account later. Only the hash is
     # stored; the raw token goes to the submitter (screen + email) once.
     claim_token_hash = models.CharField(max_length=64, blank=True, db_index=True)

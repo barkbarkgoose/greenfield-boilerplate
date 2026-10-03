@@ -10,12 +10,12 @@ Because this is a same-week job, parts will likely have to come from a local sto
 {% endif %}
 {% if req.request_type == "booking" %}Parts are billed at exactly what I pay: zero markup, guaranteed. I shop around to source them as cost-effectively as possible, so if you'd like a specific brand, OEM parts, or the budget option, just reply and let me know.
 
-{% endif %}{% if claim_url %}Want to track this request, send me questions, and keep a repair history for your car? Create a free account (or sign in) here:
+{% endif %}{% if claim_url %}Want to track this request and keep a repair history for your car? Create a free account (or sign in) here:
 {{ claim_url }}
-{% else %}Track this request and send me questions here:
+{% else %}Track this request here:
 {{ site_url }}/account/requests/{{ req.id }}
 {% endif %}
-Questions? Just reply to this email.
+Questions? Just reply to this email, or call or text me.
 
 {{ business_name }}
 {% endautoescape %}

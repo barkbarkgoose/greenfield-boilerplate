@@ -5,6 +5,8 @@ Phone: {{ req.phone|default:"-" }}
 Email: {{ req.email|default:"-" }}
 Location: {{ req.service_address|default:"-" }}
 Language: {{ language_label }}
+OK to call/text about this request: {{ req.contact_consent|yesno:"yes,no" }}
+Promotions by text/email: {{ req.marketing_consent|yesno:"yes,no" }}
 {% if req.customer_id %}Account: {{ req.customer.email }}
 {% endif %}
 {% if req.vin %}Vehicle: {{ req.vehicle_label|default:"(not decoded)" }}

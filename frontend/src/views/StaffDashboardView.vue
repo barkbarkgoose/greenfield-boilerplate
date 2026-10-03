@@ -102,9 +102,13 @@ function when(r: Row): string {
         <p class="text-sm text-slate-500">New requests</p>
         <p class="mt-1 text-3xl font-bold text-slate-900">{{ summary?.status_counts.new ?? '–' }}</p>
       </button>
-      <button type="button" class="rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-200 hover:ring-slate-300" @click="setFilter({ status: '', unread: true, emergency: false })">
+      <button v-if="summary?.messaging_enabled" type="button" class="rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-200 hover:ring-slate-300" @click="setFilter({ status: '', unread: true, emergency: false })">
         <p class="text-sm text-slate-500">Unread messages</p>
         <p class="mt-1 text-3xl font-bold" :class="summary?.unread_messages ? 'text-amber-600' : 'text-slate-900'">{{ summary?.unread_messages ?? '–' }}</p>
+      </button>
+      <button v-else type="button" class="rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-200 hover:ring-slate-300" @click="setFilter({ status: 'scheduled', unread: false, emergency: false })">
+        <p class="text-sm text-slate-500">Scheduled</p>
+        <p class="mt-1 text-3xl font-bold text-slate-900">{{ summary?.status_counts.scheduled ?? '–' }}</p>
       </button>
       <button type="button" class="rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-200 hover:ring-slate-300" @click="setFilter({ status: 'new,contacted', unread: false, emergency: true })">
         <p class="text-sm text-slate-500">Open emergencies</p>
@@ -156,7 +160,7 @@ function when(r: Row): string {
           class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm sm:w-64 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
           aria-label="Search requests"
         />
-        <label class="flex items-center gap-1.5 text-sm text-slate-600">
+        <label v-if="summary?.messaging_enabled" class="flex items-center gap-1.5 text-sm text-slate-600">
           <input type="checkbox" class="accent-amber-500" :checked="filters.unread" @change="setFilter({ unread: !filters.unread })" />
           Unread
         </label>

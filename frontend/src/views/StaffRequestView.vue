@@ -167,7 +167,7 @@ onMounted(async () => {
     request.value = await fetchStaffRequest(route.params.id as string)
     fillForm(request.value)
     parts.start(request.value.parts_estimate)
-    live.start(request.value.updated_at)
+    if (request.value.messaging_enabled) live.start(request.value.updated_at)
   } catch {
     loadError.value = true
   }
@@ -215,6 +215,16 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                 </p>
                 <p class="text-xs text-slate-500">
                   {{ request.customer ? `Has an account (${request.customer.email})` : 'Guest, no account yet' }}
+                </p>
+                <p class="flex flex-wrap gap-1.5 pt-1">
+                  <span
+                    class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                    :class="request.contact_consent ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'"
+                  >{{ request.contact_consent ? 'OK to call/text' : 'No contact consent recorded' }}</span>
+                  <span
+                    class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                    :class="request.marketing_consent ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'"
+                  >{{ request.marketing_consent ? 'Promos OK' : 'No promos' }}</span>
                 </p>
               </div>
             </div>
@@ -296,8 +306,8 @@ const labelClass = 'block text-sm font-medium text-slate-700'
             />
           </section>
 
-          <!-- Messages -->
-          <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <!-- Messages (off unless INTAKE_MESSAGING_ENABLED is set) -->
+          <section v-if="request.messaging_enabled" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 class="font-semibold text-slate-900">Messages</h2>
             <p v-if="!request.email" class="mt-1 text-sm text-amber-700">
               No email on file, so replies won't reach them. Call or text instead.

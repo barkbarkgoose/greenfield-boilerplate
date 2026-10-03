@@ -3,12 +3,17 @@
 import re
 from decimal import Decimal
 
+from django.conf import settings
 from django.utils import timezone
 from rest_framework import serializers
 
 from . import invoicing, parts, pricing
 from .i18n import current_language, t
 from .models import InvoiceLine, RequestMessage, ServiceRequest, Vehicle, VehicleType
+
+# Bump when the consent checkbox wording changes (frontend locales
+# intake-consent__*), so each request records which wording was agreed to.
+CONSENT_VERSION = "2026-10-03"
 
 # 17 characters, digits and capital letters except I, O and Q (ISO 3779).
 VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
@@ -79,6 +84,8 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             "other_description",
             "preferred_date",
             "notes",
+            "contact_consent",
+            "marketing_consent",
             "estimate",
             "estimated_total",
             "is_emergency",
@@ -97,8 +104,10 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         errors = {}
-        if not attrs.get("phone") and not attrs.get("email"):
-            errors["phone"] = t("validation__contact--required")
+        if not (attrs.get("phone") or "").strip():
+            errors["phone"] = t("validation__phone--required")
+        if not attrs.get("contact_consent"):
+            errors["contact_consent"] = t("validation__consent--required")
 
         services = attrs.get("services") or []
         if attrs.get("request_type", ServiceRequest.RequestType.BOOKING) == ServiceRequest.RequestType.BOOKING:
@@ -122,6 +131,8 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         quantities = pricing.normalize_quantities(items)
         validated_data["services"] = quantities
         validated_data["language"] = current_language()
+        validated_data["consent_version"] = CONSENT_VERSION
+        validated_data["consent_at"] = timezone.now()
         if quantities:
             quote = pricing.estimate(
                 quantities, validated_data.get("preferred_date"), timezone.localdate()
@@ -218,6 +229,7 @@ class CustomerRequestSerializer(RequestSummarySerializer):
     vehicle = VehicleSummarySerializer(read_only=True)
     parts_estimate = serializers.SerializerMethodField()
     invoice = serializers.SerializerMethodField()
+    messaging_enabled = serializers.SerializerMethodField()
 
     class Meta(RequestSummarySerializer.Meta):
         fields = RequestSummarySerializer.Meta.fields + [
@@ -235,11 +247,15 @@ class CustomerRequestSerializer(RequestSummarySerializer):
             "parts_estimate",
             "invoice",
             "messages",
+            "messaging_enabled",
             "updated_at",
         ]
 
     def get_parts_estimate(self, obj):
         return parts.as_payload(obj)
+
+    def get_messaging_enabled(self, obj):
+        return settings.INTAKE_MESSAGING_ENABLED
 
     def get_invoice(self, obj):
         """Customers only see an invoice once it's published."""
@@ -281,12 +297,18 @@ class StaffRequestSerializer(CustomerRequestSerializer):
             "internal_notes",
             "vehicle_type",
             "language",
+            "contact_consent",
+            "marketing_consent",
+            "consent_at",
             "notify_customer",
         ]
         read_only_fields = [
             f
             for f in CustomerRequestSerializer.Meta.fields
-            + ["customer", "updated_at", "parts_estimate", "invoice", "language"]
+            + [
+                "customer", "updated_at", "parts_estimate", "invoice", "language",
+                "contact_consent", "marketing_consent", "consent_at",
+            ]  # fmt: skip
             if f not in {"status", "scheduled_for", "completed_on", "odometer", "final_total"}
         ]
 

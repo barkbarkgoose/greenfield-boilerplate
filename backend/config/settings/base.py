@@ -237,4 +237,9 @@ PARTS_ESTIMATE_ASYNC = True
 # --- Captcha (Cloudflare Turnstile) -------------------------------------------
 # Leave unset to disable (local dev, tests). Set together with the frontend's
 # VITE_TURNSTILE_SITE_KEY.
+# Customer <-> mechanic message threads on request pages (and the live-update
+# polling that comes with them). Off for launch: customers call or text instead.
+# The code, data and tests stay; set INTAKE_MESSAGING_ENABLED=1 to bring it back.
+INTAKE_MESSAGING_ENABLED = env.bool("INTAKE_MESSAGING_ENABLED", default=False)
+
 TURNSTILE_SECRET_KEY = _keychain_or_env("TURNSTILE_SECRET_KEY", "TURNSTILE_SECRET_KEY", default="")

@@ -69,6 +69,8 @@ export interface RequestDetail extends RequestSummary {
   parts_estimate: PartsEstimate | null
   invoice: Invoice | null
   messages: RequestMessage[]
+  // Message threads can be switched off on the server (INTAKE_MESSAGING_ENABLED).
+  messaging_enabled: boolean
   updated_at: string
 }
 
@@ -127,6 +129,9 @@ export interface StaffRequestDetail extends RequestDetail {
   customer_request_count: number
   internal_notes: string
   vehicle_type: VehicleType | ''
+  contact_consent: boolean
+  marketing_consent: boolean
+  consent_at: string | null
 }
 
 export interface StaffRequestUpdate {
@@ -143,6 +148,7 @@ export interface StaffRequestUpdate {
 export interface StaffSummary {
   status_counts: Record<RequestStatus, number>
   unread_messages: number
+  messaging_enabled: boolean
   new_this_week: number
   emergencies_open: number
   upcoming: RequestSummary[]

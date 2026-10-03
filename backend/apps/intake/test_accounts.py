@@ -57,6 +57,7 @@ def booking_payload(**overrides):
     payload = {
         "name": "Pat Customer",
         "phone": "555-0100",
+        "contact_consent": True,
         "email": "pat@example.com",
         "vin": VIN,
         "vehicle_year": "2003",

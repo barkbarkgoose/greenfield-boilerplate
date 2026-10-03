@@ -170,6 +170,7 @@ class TestIntakeAPI:
             {
                 "name": "Pat Customer",
                 "phone": "555-0100",
+                "contact_consent": True,
                 "vin": "1hgcm82633a004352",
                 "services": [{"key": "oil_change"}, {"key": "air_filter"}],
                 "preferred_date": in_days(20),
@@ -206,6 +207,7 @@ class TestIntakeAPI:
             {
                 "name": "Pat",
                 "phone": "555-0100",
+                "contact_consent": True,
                 "vin": vin,
                 "services": [{"key": "oil_change"}],
                 "preferred_date": in_days(20),
@@ -221,6 +223,7 @@ class TestIntakeAPI:
             {
                 "name": "Pat",
                 "phone": "555-0100",
+                "contact_consent": True,
                 "vin": VALID_VIN,
                 "services": [{"key": "other"}],
                 "preferred_date": in_days(20),
@@ -244,7 +247,8 @@ class TestIntakeAPI:
             {
                 "request_type": "callback",
                 "name": "Pat",
-                "email": "pat@example.com",
+                "phone": "555-0100",
+                "contact_consent": True,
                 "notes": "Car makes a grinding noise, can you call me?",
             },
             format="json",
@@ -254,20 +258,53 @@ class TestIntakeAPI:
         assert obj.request_type == ServiceRequest.RequestType.CALLBACK
         assert obj.estimate == {}
 
-    def test_requires_a_way_to_contact(self, api_client):
+    def test_requires_a_phone_number(self, api_client):
         response = api_client.post(
             "/api/v1/intake/requests/",
-            {"request_type": "callback", "name": "Pat", "notes": "Call me"},
+            {
+                "request_type": "callback",
+                "name": "Pat",
+                "email": "pat@example.com",
+                "contact_consent": True,
+                "notes": "Call me",
+            },
             format="json",
         )
         assert response.status_code == 400
         assert "phone" in response.data
+
+    def test_requires_contact_consent(self, api_client):
+        payload = {"request_type": "callback", "name": "Pat", "phone": "555-0100", "notes": "Call me"}
+        response = api_client.post("/api/v1/intake/requests/", payload, format="json")
+        assert response.status_code == 400
+        assert "contact_consent" in response.data
+        payload["contact_consent"] = False
+        response = api_client.post("/api/v1/intake/requests/", payload, format="json")
+        assert "contact_consent" in response.data
+
+    def test_records_consent(self, api_client):
+        payload = {
+            "request_type": "callback",
+            "name": "Pat",
+            "phone": "555-0100",
+            "notes": "Call me",
+            "contact_consent": True,
+        }
+        api_client.post("/api/v1/intake/requests/", payload, format="json")
+        api_client.post(
+            "/api/v1/intake/requests/", {**payload, "marketing_consent": True}, format="json"
+        )
+        first, second = ServiceRequest.objects.order_by("id")
+        assert first.contact_consent and not first.marketing_consent
+        assert second.marketing_consent
+        assert first.consent_version and first.consent_at is not None
 
     def test_submissions_are_throttled(self, api_client):
         payload = {
             "request_type": "callback",
             "name": "Pat",
             "phone": "555-0100",
+            "contact_consent": True,
             "notes": "Call me",
         }
         codes = [

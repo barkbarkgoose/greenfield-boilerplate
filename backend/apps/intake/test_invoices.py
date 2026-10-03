@@ -243,3 +243,58 @@ class TestLiveUpdates:
             f"/api/v1/garage/requests/{booking.id}/updates/", {"after": "nope"}
         ).json()
         assert len(data["messages"]) == 1
+
+
+@pytest.mark.django_db
+class TestMessagingSwitch:
+    """INTAKE_MESSAGING_ENABLED=False (the launch default) hides message threads."""
+
+    @pytest.fixture(autouse=True)
+    def _off(self, settings):
+        settings.INTAKE_MESSAGING_ENABLED = False
+
+    def test_message_and_update_endpoints_are_off(self, customer, staff, booking):
+        c, s = client_for(customer), client_for(staff)
+        assert c.post(f"/api/v1/garage/requests/{booking.id}/messages/", {"body": "Hi"}).status_code == 404
+        assert c.get(f"/api/v1/garage/requests/{booking.id}/updates/").status_code == 404
+        assert s.post(f"/api/v1/manage/requests/{booking.id}/messages/", {"body": "Hi"}).status_code == 404
+        assert s.get(f"/api/v1/manage/requests/{booking.id}/updates/").status_code == 404
+        assert not RequestMessage.objects.exists()
+
+    def test_request_pages_say_messaging_is_off(self, customer, staff, booking):
+        assert client_for(customer).get(f"/api/v1/garage/requests/{booking.id}/").json()["messaging_enabled"] is False
+        assert client_for(staff).get(f"/api/v1/manage/requests/{booking.id}/").json()["messaging_enabled"] is False
+
+
+@pytest.mark.django_db
+class TestConsentForStaff:
+    def test_staff_see_consent_and_owner_email_mentions_it(
+        self, staff, django_capture_on_commit_callbacks
+    ):
+        with django_capture_on_commit_callbacks(execute=True):
+            response = client_for().post(
+                "/api/v1/intake/requests/",
+                {
+                    "request_type": "callback",
+                    "name": "Sam",
+                    "phone": "555-0100",
+                    "notes": "Call me",
+                    "contact_consent": True,
+                    "marketing_consent": True,
+                },
+                format="json",
+            )
+        assert response.status_code == 201
+        detail = client_for(staff).get(f"/api/v1/manage/requests/{response.data['id']}/").json()
+        assert detail["contact_consent"] is True
+        assert detail["marketing_consent"] is True
+        assert detail["consent_at"]
+        [owner_email] = mail.outbox
+        assert "Promotions by text/email: yes" in owner_email.body
+
+    def test_staff_cannot_change_consent(self, staff, booking):
+        client_for(staff).patch(
+            f"/api/v1/manage/requests/{booking.id}/", {"marketing_consent": True}, format="json"
+        )
+        booking.refresh_from_db()
+        assert booking.marketing_consent is False

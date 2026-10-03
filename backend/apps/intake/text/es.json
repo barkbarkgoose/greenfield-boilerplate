@@ -41,7 +41,6 @@
   "validation__date--required": "Elige una fecha preferida.",
   "validation__vin--invalid": "El VIN tiene 17 letras y números (nunca I, O ni Q).",
   "validation__vin--required": "Necesito el VIN para pedir las piezas correctas.",
-  "validation__contact--required": "Deja un teléfono o correo para poder contactarte.",
   "validation__other--required": "Cuéntame un poco sobre el otro trabajo.",
   "validation__notes--required": "Deja una nota breve de lo que necesitas.",
   "validation__message--empty": "Escribe un mensaje primero.",
@@ -78,5 +77,8 @@
   "email-invoice__kind--part": "Pieza",
   "email-invoice__kind--shipping": "Envío",
   "email-invoice__kind--labor": "Mano de obra",
-  "email-invoice__kind--adjustment": "Ajuste"
+  "email-invoice__kind--adjustment": "Ajuste",
+  "validation__phone--required": "Deja un número de teléfono para poder contactarte.",
+  "validation__consent--required": "Acepta que te contacte sobre esta solicitud.",
+  "validation__messaging--disabled": "Los mensajes no están disponibles. Llama o manda un mensaje de texto."
 }

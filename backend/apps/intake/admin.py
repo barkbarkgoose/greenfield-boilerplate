@@ -1,8 +1,18 @@
 """Intake app admin. The day-to-day UI is the frontend dashboard; this is the fallback."""
 
-from django.contrib import admin
+import csv
 
-from .models import Invoice, InvoiceLine, PartPriceExample, RequestMessage, ServiceRequest, Vehicle
+from django.contrib import admin
+from django.http import HttpResponse
+
+from .models import (
+    Invoice,
+    InvoiceLine,
+    PartPriceExample,
+    RequestMessage,
+    ServiceRequest,
+    Vehicle,
+)
 
 
 class RequestMessageInline(admin.TabularInline):
@@ -26,7 +36,7 @@ class ServiceRequestAdmin(admin.ModelAdmin):
         "is_emergency",
         "estimated_total",
     ]
-    list_filter = ["status", "request_type", "is_emergency"]
+    list_filter = ["status", "request_type", "is_emergency", "marketing_consent"]
     list_editable = ["status"]
     search_fields = ["name", "phone", "email", "vin", "notes"]
     date_hierarchy = "created_at"
@@ -36,12 +46,34 @@ class ServiceRequestAdmin(admin.ModelAdmin):
         "estimated_total",
         "is_emergency",
         "claim_token_hash",
+        "contact_consent",
+        "marketing_consent",
+        "consent_version",
+        "consent_at",
         "parts_estimate_status",
         "parts_estimate_result",
         "created_at",
         "updated_at",
     ]
     inlines = [RequestMessageInline]
+    actions = ["export_contacts"]
+
+    @admin.action(description="Export contacts (CSV)")
+    def export_contacts(self, request, queryset):
+        """Name, phone, email and consent for the selected requests.
+
+        For a promotions list, filter by "marketing consent: Yes" first.
+        """
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="contacts.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["name", "phone", "email", "language", "promotions_ok", "consent_at", "request_id"])
+        for req in queryset.order_by("-created_at"):
+            writer.writerow(
+                [req.name, req.phone, req.email, req.language,
+                 "yes" if req.marketing_consent else "no", req.consent_at or "", req.id]
+            )  # fmt: skip
+        return response
 
 
 @admin.register(Vehicle)

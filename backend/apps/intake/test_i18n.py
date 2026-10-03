@@ -116,6 +116,8 @@ class TestSpanishRequests:
                 "/api/v1/intake/requests/",
                 {
                     "name": "Ana",
+                    "phone": "555-0100",
+                    "contact_consent": True,
                     "email": "ana@example.com",
                     "vin": "1HGCM82633A004352",
                     "services": [{"key": "brake_pads", "quantity": 2}, {"key": "brake_rotors", "quantity": 2}, {"key": "oil_change"}],

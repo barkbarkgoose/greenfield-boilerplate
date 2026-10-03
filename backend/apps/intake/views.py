@@ -7,11 +7,13 @@
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, status
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,7 +22,13 @@ from . import invoicing, notifications, parts, pricing
 from .authentication import OptionalJWTAuthentication
 from .captcha import check_human
 from .i18n import t
-from .models import RequestMessage, ServiceRequest, Vehicle, VehicleType, hash_claim_token
+from .models import (
+    RequestMessage,
+    ServiceRequest,
+    Vehicle,
+    VehicleType,
+    hash_claim_token,
+)
 from .serializers import (
     CustomerRequestSerializer,
     EstimateSerializer,
@@ -47,6 +55,12 @@ def _mark_read(service_request: ServiceRequest, from_staff: bool) -> None:
     service_request.messages.filter(from_staff=from_staff, read_at__isnull=True).update(
         read_at=timezone.now()
     )
+
+
+def _require_messaging() -> None:
+    """Messaging can be switched off (INTAKE_MESSAGING_ENABLED); see README."""
+    if not settings.INTAKE_MESSAGING_ENABLED:
+        raise NotFound(t("validation__messaging--disabled"))
 
 
 def _updates(service_request: ServiceRequest, query_params, viewer_is_staff: bool) -> dict:
@@ -227,6 +241,7 @@ class MyRequestMessageView(APIView):
     throttle_scope = "intake_message"
 
     def post(self, request, pk):
+        _require_messaging()
         service_request = get_object_or_404(ServiceRequest, pk=pk, customer=request.user)
         serializer = MessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -240,6 +255,7 @@ class MyRequestUpdatesView(APIView):
     throttle_scope = "garage_poll"
 
     def get(self, request, pk):
+        _require_messaging()
         service_request = get_object_or_404(ServiceRequest, pk=pk, customer=request.user)
         return Response(_updates(service_request, request.query_params, viewer_is_staff=False))
 
@@ -289,6 +305,7 @@ class StaffSummaryView(APIView):
         return Response(
             {
                 "status_counts": {s: counts.get(s, 0) for s in ServiceRequest.Status.values},
+                "messaging_enabled": settings.INTAKE_MESSAGING_ENABLED,
                 "unread_messages": RequestMessage.objects.filter(
                     from_staff=False, read_at__isnull=True
                 ).count(),
@@ -383,6 +400,7 @@ class StaffRequestMessageView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request, pk):
+        _require_messaging()
         service_request = get_object_or_404(ServiceRequest, pk=pk)
         serializer = MessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -395,6 +413,7 @@ class StaffRequestUpdatesView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request, pk):
+        _require_messaging()
         service_request = get_object_or_404(ServiceRequest, pk=pk)
         return Response(_updates(service_request, request.query_params, viewer_is_staff=True))
 

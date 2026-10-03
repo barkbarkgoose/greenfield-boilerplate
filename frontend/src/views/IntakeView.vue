@@ -63,6 +63,16 @@ const form = reactive({
   website: ''
 })
 
+// Consent checkboxes. Not saved with the draft: agreeing should be a fresh
+// choice each time a request is sent.
+const consent = reactive({ contact: false, marketing: false })
+watch(
+  () => consent.contact,
+  (agreed) => {
+    if (agreed) delete errors.value.contact_consent
+  }
+)
+
 // --- Accounts & spam protection ---------------------------------------------
 
 const garage = ref<Vehicle[]>([])
@@ -264,7 +274,8 @@ function flattenErrors(data: unknown): Record<string, string> {
 function validateLocally(): Record<string, string> {
   const found: Record<string, string> = {}
   if (!form.name.trim()) found.name = t('intake-errors__name--required')
-  if (!form.phone.trim() && !form.email.trim()) found.phone = t('intake-errors__contact--required')
+  if (!form.phone.trim()) found.phone = t('intake-errors__phone--required')
+  if (!consent.contact) found.contact_consent = t('intake-errors__consent--required')
   const vin = normalizeVin(form.vin)
   if (mode.value === 'booking') {
     if (!vin) found.vin = t('intake-errors__vin--required')
@@ -307,6 +318,8 @@ async function handleSubmit() {
       other_description: isBooking && selected.other ? form.other_description.trim() : '',
       preferred_date: isBooking ? form.preferred_date : null,
       notes: form.notes.trim(),
+      contact_consent: consent.contact,
+      marketing_consent: consent.marketing,
       website: form.website,
       captcha_token: captchaToken.value
     })
@@ -351,6 +364,7 @@ function startOver() {
   lastDecodedVin = ''
   vinStatus.value = 'idle'
   captchaToken.value = ''
+  Object.assign(consent, { contact: false, marketing: false })
 }
 
 onMounted(async () => {
@@ -709,7 +723,10 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                   <input id="phone" v-model="form.phone" type="tel" autocomplete="tel" maxlength="32" :class="[inputClass, errors.phone && 'border-red-400']" />
                 </div>
                 <div>
-                  <label for="email" :class="labelClass">{{ t('intake-contact__email-label') }}</label>
+                  <label for="email" :class="labelClass">
+                    {{ t('intake-contact__email-label') }}
+                    <span class="font-normal text-slate-500">{{ t('intake-form__optional') }}</span>
+                  </label>
                   <input id="email" v-model="form.email" type="email" autocomplete="email" :class="[inputClass, errors.email && 'border-red-400']" />
                   <p v-if="errors.email" data-error class="mt-1 text-sm text-red-600">{{ errors.email }}</p>
                 </div>
@@ -732,6 +749,29 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                     :class="[inputClass, errors.notes && 'border-red-400']"
                   />
                   <p v-if="errors.notes" data-error class="mt-1 text-sm text-red-600">{{ errors.notes }}</p>
+                </div>
+                <div class="intake-consent space-y-3 rounded-xl bg-slate-50 p-4 sm:col-span-2">
+                  <label class="flex items-start gap-3 text-sm text-slate-800">
+                    <input
+                      id="contact_consent"
+                      v-model="consent.contact"
+                      type="checkbox"
+                      class="mt-0.5 h-4 w-4 shrink-0 accent-amber-500"
+                      :aria-invalid="!!errors.contact_consent"
+                    />
+                    <span>
+                      {{ t('intake-consent__contact') }}
+                      <span class="text-red-600" aria-hidden="true">*</span>
+                    </span>
+                  </label>
+                  <p v-if="errors.contact_consent" data-error class="text-sm text-red-600">{{ errors.contact_consent }}</p>
+                  <label class="flex items-start gap-3 text-sm text-slate-800">
+                    <input id="marketing_consent" v-model="consent.marketing" type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 accent-amber-500" />
+                    <span>
+                      {{ t('intake-consent__marketing') }}
+                      <span class="block text-slate-500">{{ t('intake-consent__marketing-promise') }}</span>
+                    </span>
+                  </label>
                 </div>
               </div>
             </fieldset>

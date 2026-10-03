@@ -79,6 +79,8 @@ export interface ServiceRequestPayload {
   other_description: string
   preferred_date: string | null
   notes: string
+  contact_consent: boolean
+  marketing_consent: boolean
   website?: string
   captcha_token?: string
 }

@@ -10,12 +10,12 @@ Como es un trabajo para esta misma semana, probablemente las piezas se tengan qu
 {% endif %}
 {% if req.request_type == "booking" %}Las piezas se cobran exactamente a lo que me cuestan: sin margen, garantizado. Busco las opciones más económicas, así que si prefieres una marca específica, piezas originales (OEM) o la opción más económica, solo responde y avísame.
 
-{% endif %}{% if claim_url %}¿Quieres dar seguimiento a esta solicitud, enviarme preguntas y guardar el historial de reparaciones de tu auto? Crea una cuenta gratis (o inicia sesión) aquí:
+{% endif %}{% if claim_url %}¿Quieres dar seguimiento a esta solicitud y guardar el historial de reparaciones de tu auto? Crea una cuenta gratis (o inicia sesión) aquí:
 {{ claim_url }}
-{% else %}Da seguimiento a esta solicitud y envíame preguntas aquí:
+{% else %}Da seguimiento a esta solicitud aquí:
 {{ site_url }}/account/requests/{{ req.id }}?lang=es
 {% endif %}
-¿Preguntas? Solo responde a este correo.
+¿Preguntas? Solo responde a este correo, o llámame o mándame un mensaje de texto.
 
 {{ business_name }}
 {% endautoescape %}

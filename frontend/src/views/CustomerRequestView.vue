@@ -51,7 +51,7 @@ onMounted(async () => {
   try {
     request.value = await fetchMyRequest(route.params.id as string)
     parts.start(request.value.parts_estimate)
-    live.start(request.value.updated_at)
+    if (request.value.messaging_enabled) live.start(request.value.updated_at)
   } catch {
     loadError.value = true
   }
@@ -85,7 +85,7 @@ onMounted(async () => {
             <InvoiceCard class="mt-2" :invoice="request.invoice" />
           </section>
 
-          <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <section v-if="request.messaging_enabled" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 class="font-semibold text-slate-900">{{ t('garage-request__messages-title') }}</h2>
             <p class="mt-1 text-sm text-slate-500">{{ t('garage-request__messages-intro') }}</p>
             <div class="mt-4">
