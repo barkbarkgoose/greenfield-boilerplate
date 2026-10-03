@@ -5,14 +5,11 @@ import type {
   LoginCredentials,
   RegisterRequest,
   LoginResponse,
-  RegisterResponse,
-  UserSettings,
-  UserSettingsUpdate
+  RegisterResponse
 } from '@/types/auth'
 import { isTokenExpired } from '@/utils/jwt'
 import {
   REFRESH_KEY,
-  SETTINGS_KEY,
   TOKEN_KEY,
   USER_KEY,
   clearStoredAuth
@@ -22,7 +19,6 @@ import api from '@/services/api'
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
   const user = ref<User | null>(null)
-  const userSettings = ref<UserSettings | null>(null)
 
   const isAuthenticated = computed(() => !!token.value && !isTokenExpired(token.value))
   const isStaff = computed(() => isAuthenticated.value && !!user.value?.is_staff)
@@ -32,7 +28,6 @@ export const useAuthStore = defineStore('auth', () => {
   function clearAuthState(): void {
     token.value = null
     user.value = null
-    userSettings.value = null
     clearStoredAuth()
   }
 
@@ -47,61 +42,16 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     const storedUser = localStorage.getItem(USER_KEY)
-    const storedSettings = localStorage.getItem(SETTINGS_KEY)
 
     token.value = storedToken
     if (storedUser) {
       user.value = JSON.parse(storedUser)
-    }
-    if (storedSettings) {
-      userSettings.value = JSON.parse(storedSettings)
     }
   }
 
   function storeUser(nextUser: User): void {
     user.value = nextUser
     localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
-    if (nextUser.settings) {
-      userSettings.value = nextUser.settings
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(nextUser.settings))
-    }
-  }
-
-  async function fetchUserSettings(): Promise<UserSettings | null> {
-    if (!token.value) return null
-    try {
-      const response = await api.get<UserSettings>('/api/v1/auth/settings/')
-      userSettings.value = response.data
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(response.data))
-      if (user.value) {
-        user.value.settings = response.data
-        localStorage.setItem(USER_KEY, JSON.stringify(user.value))
-      }
-      return response.data
-    } catch {
-      return null
-    }
-  }
-
-  async function updateUserSettings(settings: UserSettingsUpdate): Promise<UserSettings> {
-    const response = await api.patch<UserSettings>('/api/v1/auth/settings/', settings)
-    userSettings.value = response.data
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(response.data))
-    if (user.value) {
-      user.value.settings = response.data
-      localStorage.setItem(USER_KEY, JSON.stringify(user.value))
-    }
-    return response.data
-  }
-
-  async function saveApiKey(provider: string, apiKey: string): Promise<boolean> {
-    if (!token.value || !provider) return false
-    try {
-      await updateUserSettings({ api_keys: { [provider]: apiKey.trim() } })
-      return true
-    } catch {
-      return false
-    }
   }
 
   async function login(credentials: LoginCredentials): Promise<void> {
@@ -124,8 +74,7 @@ export const useAuthStore = defineStore('auth', () => {
       id: response.data.id,
       email: response.data.email,
       name: response.data.name,
-      is_staff: !!response.data.is_staff,
-      organization: response.data.organization
+      is_staff: !!response.data.is_staff
     })
   }
 
@@ -136,14 +85,10 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     token,
     user,
-    userSettings,
     isAuthenticated,
     isStaff,
     homeRoute,
     loadFromStorage,
-    fetchUserSettings,
-    updateUserSettings,
-    saveApiKey,
     login,
     register,
     logout

@@ -117,6 +117,10 @@ DATABASES = {"default": env.db_url_config(DATABASE_URL)}
 
 AUTH_USER_MODEL = "users.User"
 
+# Password reset links work once and expire after this many seconds. The
+# customer-facing text says "2 hours" (auth-forgot__sent, auth-reset__invalid).
+PASSWORD_RESET_TIMEOUT = 2 * 60 * 60
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
@@ -165,6 +169,10 @@ REST_FRAMEWORK = {
         "intake_parts": "240/hour",
         # Open garage pages check for replies every ~15s while visible.
         "garage_poll": "1200/hour",
+        # Per IP: slows password guessing and reset-email spam.
+        "auth_login": "30/hour",
+        "password_reset": "5/hour",
+        "password_reset_confirm": "20/hour",
     },
 }
 
@@ -197,11 +205,6 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": _ACCESS_LIFETIME,
     "REFRESH_TOKEN_LIFETIME": _REFRESH_LIFETIME,
 }
-
-# User settings / secrets-at-rest encryption. Optional: when unset, the users
-# crypto helper falls back to keychain.key and then to a SHA-256 derivation of
-# SECRET_KEY (see apps/users/crypto.py).
-SETTINGS_ENCRYPTION_KEY = env("SETTINGS_ENCRYPTION_KEY", default="")
 
 # --- Email -------------------------------------------------------------------
 # SMTP by default; local/test settings override the backend. Credentials come

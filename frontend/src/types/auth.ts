@@ -7,7 +7,6 @@ export interface RegisterRequest {
   email: string
   password: string
   name: string
-  organization_name?: string
 }
 
 export interface LoginResponse {
@@ -21,30 +20,7 @@ export interface RegisterResponse {
   email: string
   name: string
   is_staff?: boolean
-  organization: {
-    id: number
-    name: string
-  }
   token: string
-}
-
-export interface ApiKeyStatus {
-  is_configured: boolean
-  preview: string
-}
-
-export interface UserSettings {
-  theme_colors?: Record<string, string>
-  default_view?: string
-  default_ai_provider?: string
-  api_keys_status?: Record<string, ApiKeyStatus>
-}
-
-export interface UserSettingsUpdate {
-  theme_colors?: Record<string, string>
-  default_view?: string
-  default_ai_provider?: string
-  api_keys?: Record<string, string>
 }
 
 export interface User {
@@ -52,11 +28,6 @@ export interface User {
   email: string
   name: string
   is_staff?: boolean
-  organization?: {
-    id: number
-    name: string
-  }
-  settings?: UserSettings
 }
 
 export interface AuthState {

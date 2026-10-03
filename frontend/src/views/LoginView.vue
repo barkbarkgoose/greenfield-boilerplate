@@ -35,7 +35,9 @@ async function handleSubmit() {
       errorMessage.value =
         err.response?.status === 401
           ? t('auth-login__error--credentials')
-          : err.response?.data?.detail || t('auth-login__error--generic')
+          : err.response?.status === 429
+            ? t('auth-login__error--rate-limited')
+            : t('auth-login__error--generic')
     } else {
       errorMessage.value = t('auth-login__error--generic')
     }
@@ -67,7 +69,12 @@ const inputClass =
             <input id="email-address" v-model="email" type="email" autocomplete="email" required :class="inputClass" />
           </div>
           <div>
-            <label for="password" class="block text-sm font-medium text-slate-700">{{ t('auth-login__password-label') }}</label>
+            <div class="flex items-baseline justify-between gap-3">
+              <label for="password" class="block text-sm font-medium text-slate-700">{{ t('auth-login__password-label') }}</label>
+              <router-link :to="{ name: 'forgot-password', query: email ? { email } : {} }" class="text-sm font-medium text-amber-700 hover:text-amber-600">
+                {{ t('auth-login__forgot-link') }}
+              </router-link>
+            </div>
             <input id="password" v-model="password" type="password" autocomplete="current-password" required :class="inputClass" />
           </div>
 

@@ -80,5 +80,8 @@
   "email-invoice__kind--adjustment": "Ajuste",
   "validation__phone--required": "Deja un número de teléfono para poder contactarte.",
   "validation__consent--required": "Acepta que te contacte sobre esta solicitud.",
-  "validation__messaging--disabled": "Los mensajes no están disponibles. Llama o manda un mensaje de texto."
+  "validation__messaging--disabled": "Los mensajes no están disponibles. Llama o manda un mensaje de texto.",
+  "email__subject--password-reset": "Restablece tu contraseña de {business}",
+  "validation__password-reset--invalid": "Este enlace no es válido o ya venció. Pide uno nuevo.",
+  "validation__register--email-taken": "Ya existe una cuenta con este correo. Inicia sesión o restablece tu contraseña."
 }

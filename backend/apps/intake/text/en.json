@@ -80,5 +80,8 @@
   "email-invoice__kind--adjustment": "Adjustment",
   "validation__phone--required": "Leave a phone number so I can reach you.",
   "validation__consent--required": "Please agree to be contacted about this request.",
-  "validation__messaging--disabled": "Messages aren't available. Call or text instead."
+  "validation__messaging--disabled": "Messages aren't available. Call or text instead.",
+  "email__subject--password-reset": "Reset your {business} password",
+  "validation__password-reset--invalid": "This reset link is invalid or has expired. Request a new one.",
+  "validation__register--email-taken": "An account with this email already exists. Sign in or reset your password."
 }

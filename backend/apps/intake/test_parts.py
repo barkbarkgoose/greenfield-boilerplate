@@ -15,7 +15,6 @@ from rest_framework.test import APIClient
 
 from apps.intake import parts
 from apps.intake.models import PartPriceExample, ServiceRequest
-from apps.organizations.models import Organization
 
 User = get_user_model()
 VIN = "1HGCM82633A004352"
@@ -196,8 +195,7 @@ class TestRequests:
         add("brake_pads", "truck", "90")
         submit(django_capture_on_commit_callbacks, services=[{"key": "brake_pads"}])
         req = ServiceRequest.objects.get()
-        org = Organization.objects.create(name="o")
-        staff = User.objects.create_user(email="m@x.com", name="M", password="x", organization=org, is_staff=True)
+        staff = User.objects.create_user(email="m@x.com", name="M", password="x", is_staff=True)
         client = APIClient()
         client.force_authenticate(staff)
         with django_capture_on_commit_callbacks(execute=True):
@@ -211,9 +209,8 @@ class TestRequests:
         submit(django_capture_on_commit_callbacks)
         req = ServiceRequest.objects.get()
         add("brake_pads", "sedan", "80")
-        org = Organization.objects.create(name="o")
-        customer = User.objects.create_user(email="c@x.com", name="C", password="x", organization=org)
-        staff = User.objects.create_user(email="m@x.com", name="M", password="x", organization=org, is_staff=True)
+        customer = User.objects.create_user(email="c@x.com", name="C", password="x")
+        staff = User.objects.create_user(email="m@x.com", name="M", password="x", is_staff=True)
         url = f"/api/v1/manage/requests/{req.id}/parts-estimate/"
         client = APIClient()
         client.force_authenticate(customer)
@@ -223,8 +220,7 @@ class TestRequests:
 
     def test_customer_sees_estimate_on_their_request(self, django_capture_on_commit_callbacks):
         add("brake_pads", "sedan", "40")
-        org = Organization.objects.create(name="o")
-        customer = User.objects.create_user(email="c@x.com", name="C", password="x", organization=org)
+        customer = User.objects.create_user(email="c@x.com", name="C", password="x")
         client = APIClient()
         client.force_authenticate(customer)
         submit(django_capture_on_commit_callbacks, client=client)

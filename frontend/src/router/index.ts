@@ -33,6 +33,19 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresGuest: true }
   },
 
+  {
+    path: '/forgot-password',
+    name: 'forgot-password',
+    component: () => import('@/views/ForgotPasswordView.vue'),
+    meta: { requiresGuest: true }
+  },
+  {
+    // The link emailed by the password reset; works signed in or out.
+    path: '/reset-password/:uid/:token',
+    name: 'reset-password',
+    component: () => import('@/views/ResetPasswordView.vue')
+  },
+
   // Customers: their garage (vehicles + repair history) and request threads.
   {
     path: '/account',

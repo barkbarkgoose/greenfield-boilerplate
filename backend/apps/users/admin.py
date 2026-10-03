@@ -8,13 +8,13 @@ from .models import User
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ["id", "email", "name", "organization", "is_active", "created_at"]
-    list_filter = ["is_active", "is_staff", "organization"]
+    list_display = ["id", "email", "name", "is_staff", "is_active", "created_at"]
+    list_filter = ["is_active", "is_staff"]
     search_fields = ["email", "name"]
     ordering = ["-created_at"]
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Personal info", {"fields": ("name", "organization")}),
+        ("Personal info", {"fields": ("name",)}),
         ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser")}),
     )
     add_fieldsets = (
@@ -22,7 +22,7 @@ class UserAdmin(BaseUserAdmin):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("email", "name", "password1", "password2", "organization"),
+                "fields": ("email", "name", "password1", "password2"),
             },
         ),
     )

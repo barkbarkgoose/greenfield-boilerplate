@@ -153,6 +153,23 @@ def notify_status_change(req: ServiceRequest) -> None:
     )
 
 
+def notify_password_reset(user, reset_url: str, language: str) -> None:
+    """Send a password reset link in the language it was requested in."""
+    language = normalize(language)
+    _send(
+        t("email__subject--password-reset", language, business=settings.BUSINESS_NAME),
+        "customer_password_reset",
+        {
+            "name": user.name,
+            "reset_url": reset_url,
+            "hours": settings.PASSWORD_RESET_TIMEOUT // 3600,
+            "business_name": getattr(settings, "BUSINESS_NAME", ""),
+        },
+        [user.email],
+        language,
+    )
+
+
 def notify_invoice(req: ServiceRequest) -> None:
     """Send the customer their invoice once it's published."""
     from . import invoicing  # invoicing -> serializers -> notifications chain

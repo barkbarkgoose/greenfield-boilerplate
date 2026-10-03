@@ -11,7 +11,6 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.intake.models import RequestMessage, ServiceRequest, Vehicle
-from apps.organizations.models import Organization
 
 User = get_user_model()
 VIN = "1HGCM82633A004352"
@@ -29,10 +28,8 @@ def _setup(settings):
 
 
 def make_user(email, staff=False):
-    org = Organization.objects.create(name=email)
     return User.objects.create_user(
-        email=email, name=email.split("@")[0].title(), password=PASSWORD,
-        organization=org, is_staff=staff,
+        email=email, name=email.split("@")[0].title(), password=PASSWORD, is_staff=staff,
     )
 
 
@@ -293,7 +290,7 @@ class TestStaffDashboard:
 
 @pytest.mark.django_db
 class TestCustomerSignup:
-    def test_register_without_organization(self):
+    def test_register_customer(self):
         r = APIClient().post(
             "/api/v1/auth/register/",
             {"email": "new@example.com", "name": "New Person", "password": PASSWORD},

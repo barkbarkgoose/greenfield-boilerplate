@@ -1,14 +1,25 @@
-"""Tests for the users app: auth payload and UserSettingsView."""
+"""Tests for the users app: login, registration and password reset."""
+
+import re
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core import mail
+from django.core.cache import cache
 from rest_framework.test import APIClient
-
-from apps.organizations.models import Organization
 
 User = get_user_model()
 
 VALID_PASSWORD = "ValidPassword123!"
+NEW_PASSWORD = "BrandNewPass456!"
+
+
+@pytest.fixture(autouse=True)
+def _setup(settings):
+    cache.clear()  # throttle counters
+    settings.SITE_URL = "https://shop.example"
+    yield
+    cache.clear()
 
 
 @pytest.fixture
@@ -17,14 +28,15 @@ def api_client():
 
 
 @pytest.fixture
-def sample_user():
-    org = Organization.objects.create(name="Test Org")
+def sample_user(db):
     return User.objects.create_user(
-        email="test@example.com",
-        name="Test User",
-        password=VALID_PASSWORD,
-        organization=org,
+        email="test@example.com", name="Test User", password=VALID_PASSWORD
     )
+
+
+def reset_link_parts(body: str) -> tuple[str, str]:
+    uid, token = re.search(r"/reset-password/([^/\s]+)/([^/?\s]+)", body).groups()
+    return uid, token
 
 
 @pytest.mark.django_db
@@ -40,105 +52,111 @@ class TestAuthViews:
         assert "refresh" in response.data
         # Regression guard: the frontend needs the user payload on login,
         # otherwise it stays logged in with a null user.
-        assert response.data["user"]["email"] == sample_user.email
+        assert response.data["user"] == {
+            "id": sample_user.id,
+            "email": sample_user.email,
+            "name": "Test User",
+            "is_staff": False,
+        }
+
+    def test_login_email_is_case_insensitive(self, api_client, sample_user):
+        response = api_client.post(
+            "/api/v1/auth/login/",
+            {"email": "Test@Example.com", "password": VALID_PASSWORD},
+            format="json",
+        )
+        assert response.status_code == 200
+
+    def test_register_rejects_existing_email_any_case(self, api_client, sample_user):
+        response = api_client.post(
+            "/api/v1/auth/register/",
+            {"email": "TEST@example.com", "name": "Dup", "password": VALID_PASSWORD},
+            format="json",
+            HTTP_ACCEPT_LANGUAGE="es",
+        )
+        assert response.status_code == 400
+        assert "Ya existe una cuenta" in str(response.data["email"][0])
+
+    def test_settings_endpoint_is_gone(self, api_client, sample_user):
+        api_client.force_authenticate(sample_user)
+        assert api_client.get("/api/v1/auth/settings/").status_code == 404
 
 
 @pytest.mark.django_db
-class TestUserSettingsAPI:
-    def test_settings_unauthenticated(self, api_client):
-        response = api_client.get("/api/v1/auth/settings/")
-        assert response.status_code == 401
+class TestPasswordReset:
+    def request_reset(self, client, email, **extra):
+        return client.post("/api/v1/auth/password-reset/", {"email": email}, format="json", **extra)
 
-    def test_get_settings_authenticated(self, api_client, sample_user):
-        api_client.force_authenticate(user=sample_user)
-        response = api_client.get("/api/v1/auth/settings/")
-        assert response.status_code == 200
-        assert "theme_colors" in response.data
+    def test_full_reset_flow(self, api_client, sample_user):
+        assert self.request_reset(api_client, "TEST@example.com").status_code == 204
+        [email] = mail.outbox
+        assert email.to == ["test@example.com"]
+        assert "https://shop.example/reset-password/" in email.body
+        uid, token = reset_link_parts(email.body)
 
-    def test_update_settings_valid(self, api_client, sample_user):
-        api_client.force_authenticate(user=sample_user)
-        payload = {
-            "theme_colors": {
-                "primary": "#8b5cf6",
-                "accent": "emerald",
-            },
-            "default_view": "upcoming",
-        }
-        response = api_client.patch("/api/v1/auth/settings/", payload, format="json")
-        assert response.status_code == 200
-        assert response.data["theme_colors"]["primary"] == "#8b5cf6"
-        assert response.data["theme_colors"]["accent"] == "emerald"
-        assert response.data["default_view"] == "upcoming"
-
+        response = api_client.post(
+            "/api/v1/auth/password-reset/confirm/",
+            {"uid": uid, "token": token, "password": NEW_PASSWORD},
+            format="json",
+        )
+        assert response.status_code == 204
         sample_user.refresh_from_db()
-        assert sample_user.settings["theme_colors"]["primary"] == "#8b5cf6"
+        assert sample_user.check_password(NEW_PASSWORD)
 
-    def test_update_settings_strips_disallowed_keys(self, api_client, sample_user):
-        api_client.force_authenticate(user=sample_user)
-        payload = {
-            "theme_colors": {"primary": "#10b981"},
-            "is_staff": True,  # Disallowed / dangerous key
-            "is_superuser": True,
-            "role": "admin",
-        }
-        response = api_client.patch("/api/v1/auth/settings/", payload, format="json")
-        assert response.status_code == 200
-        sample_user.refresh_from_db()
-        assert not sample_user.is_staff
-        assert not sample_user.is_superuser
-        assert "is_staff" not in sample_user.settings
-        assert "role" not in sample_user.settings
-
-    def test_update_settings_invalid_color_rejected(self, api_client, sample_user):
-        api_client.force_authenticate(user=sample_user)
-        payload = {"theme_colors": {"primary": "javascript:alert(1);"}}
-        response = api_client.patch("/api/v1/auth/settings/", payload, format="json")
+        # The link only works once.
+        response = api_client.post(
+            "/api/v1/auth/password-reset/confirm/",
+            {"uid": uid, "token": token, "password": "AnotherPass789!"},
+            format="json",
+        )
         assert response.status_code == 400
-        assert "theme_colors" in response.data
+        assert "token" in response.data
 
-    def test_api_keys_are_encrypted_at_rest_in_db(self, api_client, sample_user):
-        api_client.force_authenticate(user=sample_user)
-        raw_key = "AIzaSyDummySecretKeyForTesting12345"
-        payload = {
-            "api_keys": {
-                "google": raw_key,
-                "anthropic": "sk-ant-testkey67890",
-            }
-        }
-        response = api_client.patch("/api/v1/auth/settings/", payload, format="json")
-        assert response.status_code == 200
+    def test_unknown_email_gets_same_answer_and_no_mail(self, api_client, db):
+        assert self.request_reset(api_client, "nobody@example.com").status_code == 204
+        assert mail.outbox == []
 
-        # Safe response: raw key is never returned to the frontend.
-        assert "api_keys" not in response.data
-        status_info = response.data.get("api_keys_status", {})
-        assert status_info["google"]["is_configured"] is True
-        assert status_info["google"]["preview"].endswith("2345")
-        assert raw_key not in status_info["google"]["preview"]
+    def test_inactive_user_gets_no_mail(self, api_client, sample_user):
+        sample_user.is_active = False
+        sample_user.save()
+        self.request_reset(api_client, sample_user.email)
+        assert mail.outbox == []
 
-        # Database verification: the raw key is NOT plain text in SQLite.
+    def test_spanish_request_gets_spanish_email_and_link(self, api_client, sample_user):
+        self.request_reset(api_client, sample_user.email, HTTP_ACCEPT_LANGUAGE="es")
+        [email] = mail.outbox
+        assert email.subject.startswith("Restablece tu contraseña")
+        assert "?lang=es" in email.body
+
+    def test_weak_password_is_rejected(self, api_client, sample_user):
+        self.request_reset(api_client, sample_user.email)
+        uid, token = reset_link_parts(mail.outbox[0].body)
+        response = api_client.post(
+            "/api/v1/auth/password-reset/confirm/",
+            {"uid": uid, "token": token, "password": "123"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "password" in response.data
         sample_user.refresh_from_db()
-        stored_keys = sample_user.settings.get("api_keys", {})
-        assert stored_keys["google"] != raw_key
-        assert stored_keys["google"].startswith("gAAAAA")  # Fernet token
+        assert sample_user.check_password(VALID_PASSWORD)
 
-        from apps.users.crypto import decrypt_secret
-
-        assert decrypt_secret(stored_keys["google"]) == raw_key
-        assert decrypt_secret(stored_keys["anthropic"]) == "sk-ant-testkey67890"
-
-    def test_api_key_can_be_removed(self, api_client, sample_user):
-        api_client.force_authenticate(user=sample_user)
-        api_client.patch(
-            "/api/v1/auth/settings/",
-            {"api_keys": {"openai": "sk-test-key-123456"}},
+    @pytest.mark.parametrize("uid, token", [("bogus", "bogus"), ("MQ", "wrong-token")])
+    def test_bad_links_are_rejected(self, api_client, sample_user, uid, token):
+        response = api_client.post(
+            "/api/v1/auth/password-reset/confirm/",
+            {"uid": uid, "token": token, "password": NEW_PASSWORD},
             format="json",
         )
+        assert response.status_code == 400
+        assert "token" in response.data
 
-        response = api_client.patch(
-            "/api/v1/auth/settings/",
-            {"api_keys": {"openai": ""}},
-            format="json",
-        )
+    def test_reset_requests_are_rate_limited(self, api_client, sample_user):
+        codes = [self.request_reset(api_client, sample_user.email).status_code for _ in range(6)]
+        assert codes[:5] == [204] * 5
+        assert codes[5] == 429
 
-        assert response.status_code == 200
-        assert response.data["api_keys_status"]["openai"]["is_configured"] is False
+    def test_stale_jwt_is_ignored(self, sample_user):
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION="Bearer not-a-real-token")
+        assert self.request_reset(client, sample_user.email).status_code == 204

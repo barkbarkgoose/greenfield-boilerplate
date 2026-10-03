@@ -19,7 +19,6 @@ from rest_framework.test import APIClient
 
 from apps.intake import i18n, pricing
 from apps.intake.models import ServiceRequest, VehicleType
-from apps.organizations.models import Organization
 
 BEM_KEY = re.compile(
     r"^[a-z0-9]+(?:-[a-z0-9]+)*"  # block
@@ -139,9 +138,8 @@ class TestSpanishRequests:
         assert "Cambio de aceite y filtro gratis con un trabajo de 2+ h" in customer.body
 
         # Stored once, rendered per reader: the mechanic sees English.
-        org = Organization.objects.create(name="o")
         staff = get_user_model().objects.create_user(
-            email="m@x.com", name="M", password="x", organization=org, is_staff=True
+            email="m@x.com", name="M", password="x", is_staff=True
         )
         client = APIClient()
         client.force_authenticate(staff)

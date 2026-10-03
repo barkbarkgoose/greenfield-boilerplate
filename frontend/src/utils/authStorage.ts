@@ -10,11 +10,12 @@
 export const TOKEN_KEY = 'auth_token'
 export const REFRESH_KEY = 'refresh_token'
 export const USER_KEY = 'auth_user'
-export const SETTINGS_KEY = 'auth_user_settings'
+// No longer written; still cleared so old browsers drop it.
+const LEGACY_SETTINGS_KEY = 'auth_user_settings'
 
 export function clearStoredAuth(): void {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(REFRESH_KEY)
   localStorage.removeItem(USER_KEY)
-  localStorage.removeItem(SETTINGS_KEY)
+  localStorage.removeItem(LEGACY_SETTINGS_KEY)
 }

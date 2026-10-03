@@ -99,8 +99,9 @@ boilerplate/
 │   ├── config/           # Django settings
 │   │   └── settings/     # base.py, local.py, production.py
 │   ├── apps/
-│   │   ├── users/       # Custom User model + JWT auth
-│   │   └── organizations/
+│   │   ├── users/       # Custom User model, JWT auth, password reset
+│   │   ├── intake/      # The mechanic site: bookings, garage, invoices, staff
+│   │   └── organizations/  # migration stub only (see Key Features)
 │   └── manage.py
 └── frontend/
     ├── src/
@@ -118,11 +119,14 @@ boilerplate/
 - **JWT Auth** with simplejwt (register/login/refresh endpoints)
 - **Expired-token handling**: the auth store drops expired JWTs and the Axios
   interceptor redirects to `/login`, so the UI never gets stuck on a dead session
-- **Custom User Model** with Organization FK
-- **Per-user settings** (`/api/v1/auth/settings/`) with key whitelisting,
-  input validation, and API keys encrypted at rest via `apps/users/crypto.py`.
-  The AI provider and API key settings are hidden in this site's UI (it doesn't use
-  AI); the API still accepts them, so they can come back without a migration.
+- **Custom User Model** (email login, case-insensitive)
+- **Password reset by email**: one-time links that expire after 2 hours
+  (`PASSWORD_RESET_TIMEOUT`)
+- **Rate limits** on sign-in (30/hour per IP) and reset requests (5/hour per IP)
+
+The boilerplate's organizations and per-user settings / AI API key storage were
+removed: this site doesn't use them. `apps/organizations` stays only as a migration
+stub (its last migration drops the table) and can be deleted after a migration squash.
 - **CORS configured** for frontend at localhost:5177
 - **APPEND_SLASH=False** for clean API URLs
 
@@ -138,11 +142,11 @@ uv run --with-requirements requirements.txt python -m pytest
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/v1/auth/register/` | POST | No | Register user + org |
+| `/api/v1/auth/register/` | POST | No | Create a customer account |
 | `/api/v1/auth/login/` | POST | No | Get JWT tokens + user |
 | `/api/v1/auth/refresh/` | POST | No | Refresh access token |
-| `/api/v1/auth/settings/` | GET | Yes | Read current user's settings |
-| `/api/v1/auth/settings/` | PATCH | Yes | Update current user's settings |
+| `/api/v1/auth/password-reset/` | POST | No | Email a reset link (same answer whether or not the email exists; 5/hour) |
+| `/api/v1/auth/password-reset/confirm/` | POST | No | Set a new password with the link's `uid` + `token` |
 | `/api/v1/intake/catalog/` | GET | No | Services, prices, bundles, booking policy |
 | `/api/v1/intake/estimate/` | POST | No | Price a set of services for a date; also returns a parts estimate if `vehicle_type` is given |
 | `/api/v1/intake/requests/` | POST | Optional | Submit a booking or contact request (10/hour per IP) |
@@ -174,12 +178,15 @@ uv run --with-requirements requirements.txt python -m pytest
 | `/account` | Customers | "My garage": each car with its repair history |
 | `/account/requests/:id` | Customers | Request details, appointment, invoice (plus a message thread when messaging is on) |
 | `/settings` | Signed in | Profile and language |
+| `/forgot-password`, `/reset-password/:uid/:token` | Anyone | Request a reset link; the page the emailed link opens |
 | `/claim/:token` | Customers | Attaches a guest booking to the signed-in account |
 | `/dashboard` | Staff (`is_staff`) | Bookings dashboard: filters, search, unread, upcoming |
 | `/dashboard/requests/:id` | Staff | Manage status, appointment, odometer, private notes; build the invoice; reply |
 
 Make yourself staff with `python manage.py createsuperuser` (or tick `is_staff` in the
-Django admin). Customers create accounts at `/register`; no organization is needed.
+Django admin). Customers create accounts at `/register`. Forgotten passwords are
+reset from the "Forgot password?" link on the sign-in page; you can also set one in the
+Django admin.
 
 Every page shares one header (`SiteHeader.vue`) and footer, signed in or not. Signed-in
 people get an account menu; staff see "Dashboard" where customers see "My garage". A guest
@@ -320,6 +327,7 @@ Import it to try it out, then replace it with your own research:
 | You reply (messaging on) | The customer |
 | You change status/appointment with "Email the customer" ticked | The customer |
 | You publish an invoice with "Email the invoice" ticked | The customer |
+| Someone requests a password reset | That account's email (in the language they used) |
 
 Local development prints emails to the backend console. For production, set `SITE_URL`,
 `INTAKE_NOTIFY_EMAILS`, `DEFAULT_FROM_EMAIL`, `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_HOST_USER`
