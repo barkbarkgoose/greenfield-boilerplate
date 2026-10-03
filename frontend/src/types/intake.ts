@@ -94,28 +94,38 @@ export interface DecodedVehicle {
   model: string
 }
 
-export interface PartsEstimatePart {
+export type VehicleType = 'sedan' | 'crossover' | 'suv' | 'truck' | 'european'
+
+export const VEHICLE_TYPES: { value: VehicleType; label: string }[] = [
+  { value: 'sedan', label: 'Sedan / car' },
+  { value: 'crossover', label: 'Crossover' },
+  { value: 'suv', label: 'SUV / van' },
+  { value: 'truck', label: 'Truck' },
+  { value: 'european', label: 'European' }
+]
+
+export interface PartsEstimateService {
+  service_key: string
   name: string
   quantity: number
-  unit_low: string
-  unit_high: string
+  unit: string
+  low: string
+  typical: string
+  high: string
+  sample_count: number
+  basis: string
+  examples: { part_brand: string; description: string; source: string; price: string }[]
 }
 
 export interface PartsEstimate {
   status: 'pending' | 'ready' | 'unavailable'
+  vehicle_type?: VehicleType | ''
+  vehicle_type_label?: string
   vehicle_summary?: string
-  confidence?: 'low' | 'medium' | 'high'
-  assumptions?: string
-  services?: {
-    service_key: string
-    name: string
-    quantity: number
-    parts: PartsEstimatePart[]
-    low: string
-    high: string
-    notes: string
-  }[]
+  services?: PartsEstimateService[]
+  missing?: string[]
   low?: string
+  typical?: string
   high?: string
   generated_at?: string
 }

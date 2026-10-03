@@ -11,9 +11,6 @@ cryptography>=42
 # Database & Filters
 django-filter>=25.0
 
-# AI parts estimates (optional; inert without ANTHROPIC_API_KEY)
-anthropic>=1.11
-
 # Background Tasks (optional, enable if needed)
 # celery>=5.4
 # redis>=5.0

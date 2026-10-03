@@ -269,6 +269,7 @@ class StaffRequestSerializer(CustomerRequestSerializer):
             "customer",
             "customer_request_count",
             "internal_notes",
+            "vehicle_type",
             "updated_at",
             "notify_customer",
         ]

@@ -1,4 +1,4 @@
-import type { Estimate, PartsEstimate } from '@/types/intake'
+import type { Estimate, PartsEstimate, VehicleType } from '@/types/intake'
 
 export type RequestStatus = 'new' | 'contacted' | 'scheduled' | 'completed' | 'declined'
 
@@ -74,6 +74,7 @@ export interface StaffRequestDetail extends RequestDetail {
   customer: { id: number; name: string; email: string } | null
   customer_request_count: number
   internal_notes: string
+  vehicle_type: VehicleType | ''
   updated_at: string
 }
 
@@ -84,6 +85,7 @@ export interface StaffRequestUpdate {
   odometer?: number | null
   final_total?: string | null
   internal_notes?: string
+  vehicle_type?: VehicleType | ''
   notify_customer?: boolean
 }
 

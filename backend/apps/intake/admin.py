@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from .models import PartsEstimate, RequestMessage, ServiceRequest, Vehicle
+from .models import PartPriceExample, RequestMessage, ServiceRequest, Vehicle
 
 
 class RequestMessageInline(admin.TabularInline):
@@ -36,8 +36,8 @@ class ServiceRequestAdmin(admin.ModelAdmin):
         "estimated_total",
         "is_emergency",
         "claim_token_hash",
-        "parts_estimate",
         "parts_estimate_status",
+        "parts_estimate_result",
         "created_at",
         "updated_at",
     ]
@@ -51,7 +51,21 @@ class VehicleAdmin(admin.ModelAdmin):
     raw_id_fields = ["owner"]
 
 
-@admin.register(PartsEstimate)
-class PartsEstimateAdmin(admin.ModelAdmin):
-    list_display = ["__str__", "model_name", "generated_at"]
-    readonly_fields = ["key", "vehicle", "services", "result", "model_name", "generated_at"]
+@admin.register(PartPriceExample)
+class PartPriceExampleAdmin(admin.ModelAdmin):
+    """Your parts price table. Bulk edits: manage.py import_part_prices / export_part_prices."""
+
+    list_display = [
+        "service",
+        "vehicle_type",
+        "vehicle_make",
+        "part_brand",
+        "description",
+        "source",
+        "price",
+        "updated_at",
+    ]
+    list_editable = ["price"]
+    list_filter = ["service", "vehicle_type", "source"]
+    search_fields = ["vehicle_make", "part_brand", "description", "source"]
+    list_per_page = 100

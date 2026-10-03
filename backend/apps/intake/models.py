@@ -6,6 +6,8 @@ import secrets
 from django.conf import settings
 from django.db import models
 
+from . import pricing
+
 
 class Vehicle(models.Model):
     """A customer's car. Requests attach to it, so it builds a repair history."""
@@ -51,25 +53,48 @@ class Vehicle(models.Model):
         return vehicle
 
 
-class PartsEstimate(models.Model):
-    """An AI parts estimate, cached per vehicle + set of jobs.
+class VehicleType(models.TextChoices):
+    SEDAN = "sedan", "Sedan / car"
+    CROSSOVER = "crossover", "Crossover"
+    SUV = "suv", "SUV / van"
+    TRUCK = "truck", "Truck"
+    EUROPEAN = "european", "European"
 
-    Requests for the same car and work reuse a recent row instead of calling
-    the model again; see apps/intake/parts.py.
+
+class PartPriceExample(models.Model):
+    """One real parts price you found, used to estimate parts for similar cars.
+
+    ``price`` is the parts cost for one unit of the job: one axle for brake and
+    suspension work, the whole job otherwise (e.g. oil + filter). Estimates take
+    the min / median / max of the examples that match a vehicle; see parts.py.
     """
 
-    key = models.CharField(max_length=64, unique=True)
-    vehicle = models.JSONField(default=dict)
-    services = models.JSONField(default=dict)
-    result = models.JSONField(default=dict)
-    model_name = models.CharField(max_length=64, blank=True)
-    generated_at = models.DateTimeField()
+    service = models.CharField(
+        max_length=32,
+        choices=[(s.key, s.name) for s in pricing.SERVICES if not s.quote_required],
+    )
+    vehicle_type = models.CharField(max_length=16, choices=VehicleType.choices)
+    vehicle_make = models.CharField(
+        max_length=40, blank=True, help_text="Optional, e.g. TOYOTA. Blank = any make of this type."
+    )
+    part_brand = models.CharField(max_length=60, blank=True, help_text="e.g. Duralast Gold, Akebono")
+    description = models.CharField(max_length=120, blank=True, help_text="e.g. Ceramic pads, 2018 Camry front")
+    source = models.CharField(max_length=40, blank=True, help_text="e.g. AutoZone, RockAuto")
+    source_url = models.URLField(max_length=500, blank=True)
+    price = models.DecimalField(max_digits=8, decimal_places=2)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-generated_at"]
+        ordering = ["service", "vehicle_type", "vehicle_make", "price"]
+        indexes = [models.Index(fields=["service", "vehicle_type"])]
 
     def __str__(self) -> str:
-        return f"Parts estimate {self.key[:8]} ({self.generated_at:%Y-%m-%d})"
+        who = self.vehicle_make or self.get_vehicle_type_display()
+        return f"{self.service} / {who}: ${self.price}"
+
+    def save(self, *args, **kwargs):
+        self.vehicle_make = self.vehicle_make.strip().upper()
+        super().save(*args, **kwargs)
 
 
 def hash_claim_token(token: str) -> str:
@@ -144,9 +169,10 @@ class ServiceRequest(models.Model):
         READY = "ready", "Ready"
         UNAVAILABLE = "unavailable", "Unavailable"
 
-    parts_estimate = models.ForeignKey(
-        PartsEstimate, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
-    )
+    # Vehicle type used for parts matching: detected from the VIN, editable by staff.
+    vehicle_type = models.CharField(max_length=16, choices=VehicleType.choices, blank=True)
+    # Snapshot of the parts estimate shown to the customer (like ``estimate``).
+    parts_estimate_result = models.JSONField(default=dict, blank=True)
     parts_estimate_status = models.CharField(
         max_length=12, choices=PartsStatus.choices, blank=True, default=PartsStatus.NONE
     )

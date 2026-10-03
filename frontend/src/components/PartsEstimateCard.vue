@@ -11,22 +11,22 @@ const props = defineProps<{
   vehicleLabel?: string
 }>()
 
-const showParts = ref(false)
+const showDetails = ref(false)
 
 const allIn = computed(() => {
   if (props.estimate.status !== 'ready' || !props.laborTotal) return null
   const labor = Number(props.laborTotal)
-  return { low: labor + Number(props.estimate.low ?? 0), high: labor + Number(props.estimate.high ?? 0) }
+  return {
+    low: labor + Number(props.estimate.low ?? 0),
+    typical: labor + Number(props.estimate.typical ?? 0),
+    high: labor + Number(props.estimate.high ?? 0)
+  }
 })
 
-function range(low?: string, high?: string) {
-  if (!low || !high) return ''
-  return low === high ? formatMoney(low) : `${formatMoney(low)}–${formatMoney(high)}`
+function range(low?: string | number, high?: string | number) {
+  if (low === undefined || high === undefined) return ''
+  return Number(low) === Number(high) ? formatMoney(low) : `${formatMoney(low)}–${formatMoney(high)}`
 }
-
-const confidenceLabel = computed(
-  () => ({ low: 'Rough guess', medium: 'Typical range', high: 'Good estimate' })[props.estimate.confidence ?? 'low']
-)
 </script>
 
 <template>
@@ -43,37 +43,51 @@ const confidenceLabel = computed(
     <template v-else>
       <div class="flex items-baseline justify-between gap-3">
         <span class="text-sm text-slate-600">Parts</span>
-        <span class="text-lg font-bold text-slate-900">{{ range(estimate.low, estimate.high) }}</span>
+        <span class="text-right">
+          <span class="text-lg font-bold text-slate-900">{{ range(estimate.low, estimate.high) }}</span>
+          <span class="block text-xs text-slate-500">typically {{ formatMoney(estimate.typical ?? 0) }}</span>
+        </span>
       </div>
-      <div v-if="allIn" class="mt-1 flex items-baseline justify-between gap-3 border-t border-slate-100 pt-2">
+      <div v-if="allIn" class="mt-2 flex items-baseline justify-between gap-3 border-t border-slate-100 pt-2">
         <span class="text-sm font-semibold text-slate-900">All-in estimate</span>
-        <span class="text-lg font-bold text-slate-900">{{ range(String(allIn.low), String(allIn.high)) }}</span>
+        <span class="text-right">
+          <span class="text-lg font-bold text-slate-900">{{ range(allIn.low, allIn.high) }}</span>
+          <span class="block text-xs text-slate-500">typically {{ formatMoney(allIn.typical) }}</span>
+        </span>
       </div>
+      <p v-if="estimate.missing?.length" class="mt-2 text-xs text-slate-600">
+        Quoted separately: {{ estimate.missing.join(', ') }}.
+      </p>
 
-      <button type="button" class="mt-3 text-sm font-medium text-amber-700 hover:text-amber-600" @click="showParts = !showParts">
-        {{ showParts ? 'Hide parts list' : 'See parts list' }}
+      <button type="button" class="mt-3 text-sm font-medium text-amber-700 hover:text-amber-600" @click="showDetails = !showDetails">
+        {{ showDetails ? 'Hide price details' : 'See price details' }}
       </button>
-      <div v-if="showParts" class="mt-3 space-y-3">
+      <div v-if="showDetails" class="mt-3 space-y-3">
         <div v-for="service in estimate.services" :key="service.service_key">
           <p class="flex justify-between gap-3 text-sm font-medium text-slate-800">
             <span>{{ service.name }}<template v-if="service.quantity > 1"> ×{{ service.quantity }}</template></span>
             <span>{{ range(service.low, service.high) }}</span>
           </p>
+          <p class="text-xs text-slate-500">
+            Typically {{ formatMoney(service.typical) }} · based on {{ service.sample_count }}
+            {{ service.sample_count === 1 ? 'price' : 'prices' }} for {{ service.basis }}<template v-if="service.quantity > 1">, per {{ service.unit }}</template>
+          </p>
           <ul class="mt-1 space-y-0.5 text-xs text-slate-600">
-            <li v-for="part in service.parts" :key="part.name" class="flex justify-between gap-3">
-              <span>{{ part.quantity > 1 ? `${part.quantity} × ` : '' }}{{ part.name }}</span>
-              <span class="whitespace-nowrap">{{ range(part.unit_low, part.unit_high) }}{{ part.quantity > 1 ? ' ea' : '' }}</span>
+            <li v-for="(example, index) in service.examples" :key="index" class="flex justify-between gap-3">
+              <span class="min-w-0 truncate">
+                {{ [example.part_brand, example.description].filter(Boolean).join(' · ') || 'Example' }}
+                <span v-if="example.source" class="text-slate-400">({{ example.source }})</span>
+              </span>
+              <span class="whitespace-nowrap">{{ formatMoney(example.price) }}</span>
             </li>
           </ul>
-          <p v-if="service.notes" class="mt-1 text-xs italic text-slate-500">{{ service.notes }}</p>
         </div>
-        <p v-if="estimate.assumptions" class="text-xs text-slate-500">Assumed: {{ estimate.assumptions }}</p>
       </div>
 
       <p class="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">{{ partsPolicy.long }}</p>
       <p class="mt-2 text-xs text-slate-500">
-        {{ confidenceLabel }}: an AI estimate of typical retail prices (economy to premium), not a quote.
-        I'll confirm exact parts and prices before ordering. Parts bought locally on short notice usually cost more.
+        Ranges come from real parts-store prices I've collected for similar vehicles<template v-if="estimate.vehicle_type_label"> ({{ estimate.vehicle_type_label.toLowerCase() }})</template>.
+        Not a quote: I'll confirm the exact parts and prices before ordering. Parts bought locally on short notice usually cost more.
         <template v-if="estimate.generated_at"> Estimated {{ formatDate(estimate.generated_at) }}.</template>
       </p>
     </template>

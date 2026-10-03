@@ -128,8 +128,7 @@ class GuestPartsEstimateView(PublicAPIView):
     def post(self, request):
         token = str(request.data.get("claim_token") or "")
         service_request = (
-            ServiceRequest.objects.select_related("parts_estimate")
-            .filter(claim_token_hash=hash_claim_token(token))
+            ServiceRequest.objects.filter(claim_token_hash=hash_claim_token(token))
             .first()
             if token
             else None
@@ -179,7 +178,7 @@ class MyRequestDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return ServiceRequest.objects.filter(customer=self.request.user).select_related(
-            "vehicle", "parts_estimate"
+            "vehicle"
         ).prefetch_related("messages__author")
 
     def retrieve(self, request, *args, **kwargs):
@@ -298,9 +297,7 @@ class StaffRequestDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAdminUser]
     serializer_class = StaffRequestSerializer
     http_method_names = ["get", "patch"]
-    queryset = ServiceRequest.objects.select_related(
-        "vehicle", "customer", "parts_estimate"
-    ).prefetch_related(
+    queryset = ServiceRequest.objects.select_related("vehicle", "customer").prefetch_related(
         "messages__author"
     )
 
@@ -311,14 +308,17 @@ class StaffRequestDetailView(generics.RetrieveUpdateAPIView):
 
     def perform_update(self, serializer):
         before = (serializer.instance.status, serializer.instance.scheduled_for)
+        vehicle_type_before = serializer.instance.vehicle_type
         notify = serializer.validated_data.get("notify_customer", False)
         instance = serializer.save()
+        if instance.vehicle_type != vehicle_type_before:
+            transaction.on_commit(lambda: parts.schedule(instance))
         if notify and (instance.status, instance.scheduled_for) != before:
             transaction.on_commit(lambda: notifications.notify_status_change(instance))
 
 
 class StaffPartsEstimateRetryView(APIView):
-    """Retry a parts estimate that couldn't be produced (still subject to the daily cap)."""
+    """Recalculate a request's parts estimate, e.g. after adding price examples."""
 
     permission_classes = [IsAdminUser]
 
@@ -326,7 +326,7 @@ class StaffPartsEstimateRetryView(APIView):
         service_request = get_object_or_404(ServiceRequest, pk=pk)
         if not parts.wants_estimate(service_request):
             return Response(
-                {"detail": "Parts estimates are off, or this request has no parts to estimate."},
+                {"detail": "No price examples yet, or this request has no parts to estimate."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if service_request.parts_estimate_status != ServiceRequest.PartsStatus.PENDING:

@@ -14,7 +14,8 @@ import {
   updateStaffRequest
 } from '@/services/garage'
 import type { RequestStatus, StaffRequestDetail } from '@/types/garage'
-import type { Estimate } from '@/types/intake'
+import { VEHICLE_TYPES } from '@/types/intake'
+import type { Estimate, VehicleType } from '@/types/intake'
 import {
   STATUS_OPTIONS,
   formatDate,
@@ -34,6 +35,7 @@ const form = reactive({
   odometer: '',
   final_total: '',
   internal_notes: '',
+  vehicle_type: '' as VehicleType | '',
   notify_customer: true
 })
 const saving = ref(false)
@@ -45,12 +47,19 @@ const estimate = computed(() =>
 )
 const parts = usePartsEstimate(async () => (await fetchStaffRequest(route.params.id as string)).parts_estimate)
 const retrying = ref(false)
+const retryError = ref('')
 
 async function retryParts() {
   if (!request.value) return
   retrying.value = true
+  retryError.value = ''
   try {
     parts.start(await retryPartsEstimate(request.value.id))
+  } catch (error) {
+    retryError.value =
+      axios.isAxiosError(error) && error.response?.data?.detail
+        ? error.response.data.detail
+        : "Couldn't recalculate. Try again."
   } finally {
     retrying.value = false
   }
@@ -72,7 +81,8 @@ function fillForm(r: StaffRequestDetail) {
     completed_on: r.completed_on ?? '',
     odometer: r.odometer?.toString() ?? '',
     final_total: r.final_total ?? '',
-    internal_notes: r.internal_notes
+    internal_notes: r.internal_notes,
+    vehicle_type: r.vehicle_type
   })
 }
 
@@ -88,10 +98,14 @@ async function save() {
       odometer: form.odometer ? Number(form.odometer) : null,
       final_total: form.final_total || null,
       internal_notes: form.internal_notes,
+      vehicle_type: form.vehicle_type,
       notify_customer: canNotify.value && form.notify_customer
     })
+    const typeChanged = updated.vehicle_type !== request.value.vehicle_type
     request.value = { ...updated, messages: request.value.messages }
     fillForm(updated)
+    // A new vehicle type recalculates the parts estimate server-side.
+    if (typeChanged) parts.start({ status: 'pending' })
     savedAt.value = new Date()
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 400) {
@@ -208,25 +222,31 @@ const labelClass = 'block text-sm font-medium text-slate-700'
           </section>
 
           <!-- Parts -->
-          <section v-if="parts.estimate.value" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <section v-if="request.request_type === 'booking'" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <div class="mb-3 flex items-center justify-between gap-3">
-              <h2 class="font-semibold text-slate-900">AI parts estimate</h2>
+              <h2 class="font-semibold text-slate-900">Parts estimate</h2>
               <button
-                v-if="parts.estimate.value.status === 'unavailable'"
+                v-if="parts.estimate.value?.status !== 'pending'"
                 type="button"
                 :disabled="retrying"
                 class="rounded-lg px-3 py-1.5 text-sm font-medium ring-1 ring-slate-300 hover:bg-slate-50 disabled:opacity-50"
                 @click="retryParts"
               >
-                {{ retrying ? 'Retrying…' : 'Try again' }}
+                {{ retrying ? 'Recalculating…' : 'Recalculate' }}
               </button>
             </div>
             <PartsEstimateCard
+              v-if="parts.estimate.value"
               :estimate="parts.estimate.value"
               :labor-total="estimate?.total ?? null"
               :vehicle-label="vehicleLabel"
             />
-            <p class="mt-2 text-xs text-slate-500">The customer sees this same estimate.</p>
+            <p v-else class="text-sm text-slate-600">No parts estimate yet. Add prices to the table, then recalculate.</p>
+            <p v-if="retryError" class="mt-2 text-sm text-red-600">{{ retryError }}</p>
+            <p class="mt-2 text-xs text-slate-500">
+              The customer sees this same estimate. Recalculate after adding prices in the
+              <a href="/admin/intake/partpriceexample/" class="underline hover:text-slate-700">price table</a>.
+            </p>
           </section>
 
           <!-- Messages -->
@@ -256,6 +276,13 @@ const labelClass = 'block text-sm font-medium text-slate-700'
               <label for="scheduled_for" :class="labelClass">Appointment</label>
               <input id="scheduled_for" v-model="form.scheduled_for" type="datetime-local" :class="inputClass" />
               <p v-if="saveErrors.scheduled_for" class="mt-1 text-sm text-red-600">{{ saveErrors.scheduled_for }}</p>
+            </div>
+            <div>
+              <label for="vehicle_type" :class="labelClass">Vehicle type (for parts)</label>
+              <select id="vehicle_type" v-model="form.vehicle_type" :class="inputClass">
+                <option value="">Unknown</option>
+                <option v-for="type in VEHICLE_TYPES" :key="type.value" :value="type.value">{{ type.label }}</option>
+              </select>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>

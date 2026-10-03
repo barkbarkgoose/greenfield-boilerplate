@@ -154,7 +154,7 @@ uv run --with-requirements requirements.txt python -m pytest
 | `/api/v1/manage/summary/` | GET | Staff | Dashboard counts and upcoming appointments |
 | `/api/v1/manage/requests/` | GET | Staff | All requests; `status`, `q`, `unread`, `emergency`, `ordering`, `page` |
 | `/api/v1/manage/requests/<id>/` | GET/PATCH | Staff | Request detail / update status, appointment, notes |
-| `/api/v1/manage/requests/<id>/parts-estimate/` | POST | Staff | Retry a failed parts estimate |
+| `/api/v1/manage/requests/<id>/parts-estimate/` | POST | Staff | Recalculate a request's parts estimate |
 | `/api/v1/manage/requests/<id>/messages/` | POST | Staff | Reply to the customer (emails them) |
 
 ## Mobile Mechanic Site
@@ -196,27 +196,38 @@ discounted by the labor hours they share. On top of that:
 - **Big-job rate:** once labor (after bundles, before fees) passes $200, further labor bills
   at $25/hr (`VOLUME_THRESHOLD`, `VOLUME_RATE`).
 
-Labor estimates exclude parts; see AI parts estimates below.
+Labor estimates exclude parts; see parts estimates below.
 
-### AI parts estimates
+### Parts estimates (your price table)
 
-With `ANTHROPIC_API_KEY` set (keychain), each booking gets a parts estimate from Claude:
-typical retail price ranges (economy to premium) for the parts each job needs on that
-vehicle. Customers see it on the confirmation screen and their request page alongside an
-all-in range; the mechanic sees the same estimate with a retry button if it failed.
-Without a key the feature is off and nothing changes.
+Parts estimates come from real prices you collect, stored as **price examples**: one row
+per job and vehicle type (sedan, crossover, SUV, truck, European), optionally for a specific
+make. `price` is the parts cost for one unit of the job: one axle for brakes and suspension,
+the whole job otherwise (e.g. oil + filter).
 
-How it's locked down (details in `backend/apps/intake/parts.py`):
+For each job on a booking, the estimate is the **min / median / max** of the best-matching
+examples: same make and type first, then same make, then same type. Jobs with no match are
+shown as "quoted separately". No AI model is involved. The vehicle type comes from the VIN
+decode (European make, then pickup / SUV / car body, with SUVs split from crossovers by
+weight class); you can change it on the request page, which recalculates the estimate.
+Customers see the result on the confirmation screen and their request page, with the
+zero-markup promise. Until the table has at least one row, the feature stays off.
 
-- No endpoint triggers a model call. Estimates are generated server-side, on a background
-  thread, once per saved booking, which guests can only create after the captcha and the
-  per-IP limit. The read endpoints only read.
-- Only structured data is sent: VIN-decoded vehicle attributes (sanitized, 40 characters
-  max) and catalog service keys. Customer notes and "other work" text are never sent.
-- Output must match a JSON schema and is re-validated: unknown jobs dropped, prices and
-  quantities clamped, text truncated. Totals are computed by the server.
-- Results are cached per vehicle + jobs for 30 days, and `PARTS_ESTIMATE_DAILY_LIMIT`
-  (default 50) caps new model calls per rolling 24 hours.
+Maintain the table in a spreadsheet and import it, or edit rows in the Django admin
+(`/admin/intake/partpriceexample/`):
+
+```bash
+cd backend
+# Blank fill-in sheet: every job x vehicle type, with the price unit spelled out.
+cp apps/intake/data/part_prices_template.csv ~/part_prices.csv
+uv run python manage.py import_part_prices ~/part_prices.csv --replace   # CSV becomes the table
+uv run python manage.py export_part_prices > part_prices.csv             # back to a spreadsheet
+```
+
+Columns: `service`, `vehicle_type`, `price`, and optionally `vehicle_make`, `part_brand`,
+`description`, `source`, `source_url`. Add as many rows per job as you like (several
+brands, several stores): more examples make better ranges. Rows without a price are skipped,
+and an import with any bad row imports nothing and lists what to fix.
 
 ### Email
 
