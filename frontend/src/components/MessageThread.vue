@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { RequestMessage } from '@/types/garage'
 import { formatDateTime } from '@/utils/intake'
 
@@ -12,6 +13,7 @@ const props = defineProps<{
   hint?: string
 }>()
 
+const { t } = useI18n()
 const draft = ref('')
 const sending = ref(false)
 const error = ref('')
@@ -29,7 +31,7 @@ async function submit() {
     await props.send(body)
     draft.value = ''
   } catch {
-    error.value = "Your message couldn't be sent. Please try again."
+    error.value = t('message-thread__error')
   } finally {
     sending.value = false
   }
@@ -39,7 +41,7 @@ async function submit() {
 <template>
   <div>
     <p v-if="messages.length === 0" class="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
-      No messages yet.
+      {{ t('message-thread__empty') }}
     </p>
     <ol v-else class="space-y-3">
       <li v-for="message in messages" :key="message.id" class="flex" :class="isMine(message) ? 'justify-end' : 'justify-start'">
@@ -49,20 +51,20 @@ async function submit() {
         >
           <p class="whitespace-pre-wrap break-words">{{ message.body }}</p>
           <p class="mt-1 text-[11px]" :class="isMine(message) ? 'text-slate-400' : 'text-slate-500'">
-            {{ isMine(message) ? 'You' : message.author_name }} · {{ formatDateTime(message.created_at) }}
+            {{ isMine(message) ? t('message-thread__author--you') : message.author_name }} · {{ formatDateTime(message.created_at) }}
           </p>
         </div>
       </li>
     </ol>
 
     <form class="mt-4" @submit.prevent="submit">
-      <label for="message-draft" class="sr-only">Message</label>
+      <label for="message-draft" class="sr-only">{{ t('message-thread__input-label') }}</label>
       <textarea
         id="message-draft"
         v-model="draft"
         rows="3"
         maxlength="4000"
-        :placeholder="placeholder ?? 'Write a message…'"
+        :placeholder="placeholder ?? t('message-thread__input-placeholder')"
         class="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
         @keydown.meta.enter="submit"
         @keydown.ctrl.enter="submit"
@@ -74,7 +76,7 @@ async function submit() {
           :disabled="sending || !draft.trim()"
           class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {{ sending ? 'Sending…' : 'Send' }}
+          {{ sending ? t('message-thread__send--sending') : t('message-thread__send') }}
         </button>
       </div>
     </form>

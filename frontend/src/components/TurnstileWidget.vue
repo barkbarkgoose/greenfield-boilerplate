@@ -2,6 +2,7 @@
 // Cloudflare Turnstile captcha. Renders nothing unless VITE_TURNSTILE_SITE_KEY
 // is set, matching the backend, which only checks when its secret is set.
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 interface TurnstileApi {
   render: (el: HTMLElement, options: Record<string, unknown>) => string
@@ -17,6 +18,7 @@ declare global {
 
 const emit = defineEmits<{ (e: 'update:token', token: string): void }>()
 
+const { t, locale } = useI18n()
 const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined
 const container = ref<HTMLElement | null>(null)
 const failed = ref(false)
@@ -52,6 +54,7 @@ onMounted(async () => {
     await loadScript()
     widgetId = window.turnstile!.render(container.value, {
       sitekey: siteKey,
+      language: locale.value,
       callback: (token: string) => emit('update:token', token),
       'expired-callback': () => emit('update:token', ''),
       'error-callback': () => emit('update:token', '')
@@ -70,7 +73,7 @@ onBeforeUnmount(() => {
   <div v-if="siteKey">
     <div ref="container" />
     <p v-if="failed" class="mt-2 text-xs text-red-300">
-      The verification check couldn't load. Disable content blockers or try another browser.
+      {{ t('captcha__load-error') }}
     </p>
   </div>
 </template>

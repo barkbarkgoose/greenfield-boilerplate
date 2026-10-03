@@ -4,13 +4,14 @@ From: {{ req.name }}
 Phone: {{ req.phone|default:"-" }}
 Email: {{ req.email|default:"-" }}
 Location: {{ req.service_address|default:"-" }}
+Language: {{ language_label }}
 {% if req.customer_id %}Account: {{ req.customer.email }}
 {% endif %}
 {% if req.vin %}Vehicle: {{ req.vehicle_label|default:"(not decoded)" }}
 VIN: {{ req.vin }}
 {% endif %}{% if req.preferred_date %}Preferred date: {{ req.preferred_date|date:"D, M j, Y" }}
 {% endif %}
-{% include "intake/email/_estimate.txt" with estimate=req.estimate %}{% if req.other_description %}
+{% include "intake/email/_estimate.txt" %}{% if req.other_description %}
 Other work requested:
 {{ req.other_description }}
 {% endif %}{% if req.notes %}

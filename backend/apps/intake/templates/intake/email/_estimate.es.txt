@@ -1,0 +1,7 @@
+{% if estimate.line_items %}Estimado (solo mano de obra; las piezas se cotizan aparte al costo, sin margen):
+{% for item in estimate.line_items %}  - {{ item.name }}{% if item.quantity > 1 %} x{{ item.quantity }}{% endif %}: {% if item.quote_required %}por cotizar{% else %}${{ item.amount }}{% endif %}
+{% endfor %}{% for d in estimate.discounts %}  - {{ d.name }}: -${{ d.amount }}
+{% endfor %}  - Visita a domicilio (traslado): ${{ estimate.service_call_fee }}
+{% if estimate.emergency_fee != "0.00" %}  - Cargo por urgencia (misma semana): ${{ estimate.emergency_fee }}
+{% endif %}  Total estimado: ${{ estimate.total }}{% if estimate.needs_custom_quote %} + trabajo por cotizar{% endif %}
+{% endif %}

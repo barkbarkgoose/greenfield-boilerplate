@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import PublicHeader from '@/components/PublicHeader.vue'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -29,10 +31,14 @@ async function handleSubmit() {
     router.push(redirect.value ?? authStore.homeRoute)
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'response' in error) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      errorMessage.value = err.response?.data?.detail || 'Invalid email or password'
+      // The API's 401 text is English-only; show our own translated message.
+      const err = error as { response?: { status?: number; data?: { detail?: string } } }
+      errorMessage.value =
+        err.response?.status === 401
+          ? t('auth-login__error--credentials')
+          : err.response?.data?.detail || t('auth-login__error--generic')
     } else {
-      errorMessage.value = 'Login failed. Please try again.'
+      errorMessage.value = t('auth-login__error--generic')
     }
   } finally {
     isLoading.value = false
@@ -48,23 +54,22 @@ const inputClass =
     <PublicHeader />
     <div class="flex flex-1 items-center justify-center px-4 py-12">
       <div class="w-full max-w-md rounded-3xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
-        <h1 class="text-2xl font-bold text-slate-900">Sign in</h1>
+        <h1 class="text-2xl font-bold text-slate-900">{{ t('auth-login__title') }}</h1>
         <p class="mt-2 text-sm text-slate-600">
-          <template v-if="isClaim">Sign in to save your request to your garage.</template>
-          <template v-else>See your vehicles, repair history and messages.</template>
-          New here?
+          {{ isClaim ? t('auth-login__intro--claim') : t('auth-login__intro') }}
+          {{ t('auth-login__register-prompt') }}
           <router-link :to="{ name: 'register', query: route.query }" class="font-semibold text-amber-700 hover:text-amber-600">
-            Create an account
+            {{ t('auth-login__register-link') }}
           </router-link>
         </p>
 
         <form class="mt-6 space-y-4" @submit.prevent="handleSubmit">
           <div>
-            <label for="email-address" class="block text-sm font-medium text-slate-700">Email</label>
+            <label for="email-address" class="block text-sm font-medium text-slate-700">{{ t('auth-login__email-label') }}</label>
             <input id="email-address" v-model="email" type="email" autocomplete="email" required :class="inputClass" />
           </div>
           <div>
-            <label for="password" class="block text-sm font-medium text-slate-700">Password</label>
+            <label for="password" class="block text-sm font-medium text-slate-700">{{ t('auth-login__password-label') }}</label>
             <input id="password" v-model="password" type="password" autocomplete="current-password" required :class="inputClass" />
           </div>
 
@@ -75,7 +80,7 @@ const inputClass =
             :disabled="isLoading"
             class="w-full rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {{ isLoading ? 'Signing in…' : 'Sign in' }}
+            {{ isLoading ? t('auth-login__submit--loading') : t('auth-login__submit') }}
           </button>
         </form>
       </div>

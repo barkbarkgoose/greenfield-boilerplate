@@ -81,7 +81,9 @@ class TestEstimate:
         result = parts.estimate({"brake_pads": 2}, "sedan", "HONDA")
         line = result["services"][0]
         assert (line["low"], line["typical"], line["high"]) == ("80", "100", "180")
-        assert line["sample_count"] == 3 and line["basis"] == "sedan / car"
+        assert line["sample_count"] == 3 and line["basis"] == {"make": "", "type": "sedan"}
+        # Stored data is keys; labels are rendered at read time.
+        assert parts.localize(result)["services"][0]["basis_label"] == "sedan / car"
         assert (result["low"], result["typical"], result["high"]) == ("80", "100", "180")
 
     def test_most_specific_match_wins(self):
@@ -97,7 +99,8 @@ class TestEstimate:
         add("brake_pads", "sedan", "40")
         result = parts.estimate({"brake_pads": 1, "alternator": 1}, "sedan", "")
         assert [s["service_key"] for s in result["services"]] == ["brake_pads"]
-        assert result["missing"] == ["Alternator"]
+        assert result["missing"] == ["alternator"]
+        assert parts.localize(result)["missing"] == ["Alternator"]
 
 
 @pytest.mark.django_db

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { claimRequest } from '@/services/garage'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const failed = ref(false)
@@ -20,10 +22,10 @@ onMounted(async () => {
 <template>
   <div class="mx-auto max-w-md px-4 py-16 text-center">
     <template v-if="failed">
-      <h1 class="text-xl font-bold text-slate-900">That link didn't work</h1>
-      <p class="mt-2 text-slate-600">It may have already been used. If you saved this request before, it's in your garage.</p>
-      <router-link to="/account" class="mt-6 inline-block rounded-xl bg-slate-900 px-5 py-2.5 font-semibold text-white">Go to my garage</router-link>
+      <h1 class="text-xl font-bold text-slate-900">{{ t('claim-page__error-title') }}</h1>
+      <p class="mt-2 text-slate-600">{{ t('claim-page__error-body') }}</p>
+      <router-link to="/account" class="mt-6 inline-block rounded-xl bg-slate-900 px-5 py-2.5 font-semibold text-white">{{ t('claim-page__garage-link') }}</router-link>
     </template>
-    <p v-else class="text-slate-500">Adding this request to your garage…</p>
+    <p v-else class="text-slate-500">{{ t('claim-page__pending') }}</p>
   </div>
 </template>

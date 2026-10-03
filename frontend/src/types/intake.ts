@@ -112,8 +112,10 @@ export interface PartsEstimateService {
   low: string
   typical: string
   high: string
+  unit_label: string
   sample_count: number
-  basis: string
+  basis: { make: string; type: string }
+  basis_label: string
   examples: { part_brand: string; description: string; source: string; price: string }[]
 }
 

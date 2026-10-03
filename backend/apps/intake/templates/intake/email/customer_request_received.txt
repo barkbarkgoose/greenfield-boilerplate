@@ -5,7 +5,7 @@ Thanks for reaching out to {{ business_name }}! {% if req.request_type == "booki
 Reference: #{{ req.id }}
 {% if req.vin %}Vehicle: {{ req.vehicle_label|default:req.vin }}
 {% endif %}
-{% include "intake/email/_estimate.txt" with estimate=req.estimate %}{% if req.is_emergency %}
+{% include "intake/email/_estimate.txt" %}{% if req.is_emergency %}
 Because this is a same-week job, parts will likely have to come from a local store, which usually costs more than ordering ahead.
 {% endif %}
 {% if req.request_type == "booking" %}Parts are billed at exactly what I pay: zero markup, guaranteed. I shop around to source them as cost-effectively as possible, so if you'd like a specific brand, OEM parts, or the budget option, just reply and let me know.

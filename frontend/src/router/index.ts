@@ -1,21 +1,25 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { currentLocale, isLocale, setLocale } from '@/i18n'
+import { applyPageMeta } from '@/i18n/seo'
 
 const routes: RouteRecordRaw[] = [
   // Public, customer-facing pages: no account needed. `public` pages render
-  // their own header instead of the signed-in navbar.
+  // their own header instead of the signed-in navbar. `localized` pages also
+  // have a Spanish address (/es, /es/book) for search engines; every other
+  // page follows the visitor's saved language. See README "Translations".
   {
-    path: '/',
+    path: '/:locale(es)?',
     name: 'home',
     component: () => import('@/views/LandingView.vue'),
-    meta: { public: true }
+    meta: { public: true, localized: true }
   },
   {
-    path: '/book',
+    path: '/:locale(es)?/book',
     name: 'book',
     component: () => import('@/views/IntakeView.vue'),
-    meta: { public: true }
+    meta: { public: true, localized: true }
   },
   {
     path: '/login',
@@ -83,6 +87,17 @@ const router = createRouter({
 })
 
 router.beforeEach((to, _from, next) => {
+  // Language: ?lang=es (from email links) or an /es/ address sets it; a
+  // Spanish-speaking visitor on an English address is sent to the /es/ one.
+  if (isLocale(to.query.lang)) setLocale(to.query.lang)
+  if (to.meta.localized) {
+    if (to.params.locale === 'es') {
+      setLocale('es')
+    } else if (currentLocale() === 'es') {
+      return next({ name: to.name!, params: { ...to.params, locale: 'es' }, query: to.query, hash: to.hash })
+    }
+  }
+
   const authStore = useAuthStore()
   // loadFromStorage also drops an expired token, so isAuthenticated below
   // correctly reports false once the JWT lifetime has elapsed.
@@ -101,3 +116,5 @@ router.beforeEach((to, _from, next) => {
 })
 
 export default router
+
+router.afterEach((to) => applyPageMeta(to))

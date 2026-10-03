@@ -35,6 +35,7 @@ from django.db import close_old_connections
 from django.utils import timezone
 
 from . import pricing
+from .i18n import t
 from .models import PartPriceExample, ServiceRequest, VehicleType
 
 logger = logging.getLogger(__name__)
@@ -134,22 +135,35 @@ def jobs_for(services: dict) -> dict[str, int]:
     return {key: services[key] for key in ESTIMATABLE_KEYS if services.get(key)}
 
 
-def matching_examples(service: str, vehicle_type: str, make: str) -> tuple[list[PartPriceExample], str]:
-    """The best-matching examples for one job, plus a label for what matched."""
+def matching_examples(
+    service: str, vehicle_type: str, make: str
+) -> tuple[list[PartPriceExample], dict]:
+    """The best-matching examples for one job, plus what matched ({make, type})."""
     examples = PartPriceExample.objects.filter(service=service)
-    type_label = VehicleType(vehicle_type).label.lower() if vehicle_type else ""
     tiers = []
     if make and vehicle_type:
-        tiers.append((examples.filter(vehicle_make=make, vehicle_type=vehicle_type), f"{make.title()} {type_label}"))
+        tiers.append((examples.filter(vehicle_make=make, vehicle_type=vehicle_type), {"make": make, "type": vehicle_type}))
     if make:
-        tiers.append((examples.filter(vehicle_make=make), make.title()))
+        tiers.append((examples.filter(vehicle_make=make), {"make": make, "type": ""}))
     if vehicle_type:
-        tiers.append((examples.filter(vehicle_type=vehicle_type), type_label))
-    for queryset, label in tiers:
+        tiers.append((examples.filter(vehicle_type=vehicle_type), {"make": "", "type": vehicle_type}))
+    for queryset, basis in tiers:
         found = list(queryset)
         if found:
-            return found, label
-    return [], ""
+            return found, basis
+    return [], {"make": "", "type": ""}
+
+
+def vehicle_type_label(vehicle_type: str) -> str:
+    return t(f"vehicle-type__label--{vehicle_type}") if vehicle_type else ""
+
+
+def basis_label(basis: dict) -> str:
+    make = (basis.get("make") or "").title()
+    type_label = vehicle_type_label(basis.get("type") or "").lower()
+    if make and type_label:
+        return t("parts-basis__label--make-type", make=make, type=type_label)
+    return make or type_label
 
 
 def _dollars(value: Decimal) -> Decimal:
@@ -164,7 +178,7 @@ def estimate(jobs: dict[str, int], vehicle_type: str, make: str) -> dict:
         service = pricing.SERVICES_BY_KEY[key]
         examples, basis = matching_examples(key, vehicle_type, make)
         if not examples:
-            missing.append(service.name)
+            missing.append(key)
             continue
         prices = [example.price for example in examples]
         line = {
@@ -196,7 +210,6 @@ def estimate(jobs: dict[str, int], vehicle_type: str, make: str) -> dict:
         )
     return {
         "vehicle_type": vehicle_type,
-        "vehicle_type_label": VehicleType(vehicle_type).label if vehicle_type else "",
         "services": services,
         "missing": missing,
         **{name: str(amount) for name, amount in totals.items()},
@@ -267,11 +280,32 @@ def schedule(req: ServiceRequest) -> None:
         _run(req.pk)
 
 
+def localize(result: dict) -> dict:
+    """Render a stored estimate's labels in the active language.
+
+    Stored results hold keys (service, vehicle type, matched make/type); the
+    names shown to the reader are filled in here.
+    """
+    localized = dict(result)
+    localized["vehicle_type_label"] = vehicle_type_label(result.get("vehicle_type", ""))
+    localized["services"] = [
+        {
+            **line,
+            "name": pricing.SERVICES_BY_KEY[line["service_key"]].name,
+            "unit_label": t(f"service__unit--{line['unit']}"),
+            "basis_label": basis_label(line.get("basis") or {}),
+        }
+        for line in result.get("services", [])
+    ]
+    localized["missing"] = [pricing.SERVICES_BY_KEY[key].name for key in result.get("missing", [])]
+    return localized
+
+
 def as_payload(req: ServiceRequest) -> dict | None:
     """What the API returns about a request's parts estimate."""
     if not req.parts_estimate_status:
         return None
     data = {"status": req.parts_estimate_status}
     if req.parts_estimate_status == ServiceRequest.PartsStatus.READY:
-        data.update(req.parts_estimate_result or {})
+        data.update(localize(req.parts_estimate_result or {}))
     return data

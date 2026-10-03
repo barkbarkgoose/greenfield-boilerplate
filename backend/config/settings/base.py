@@ -80,6 +80,8 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    # Picks the request language from Accept-Language (sent by the frontend).
+    "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -124,7 +126,10 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "en"
+# Customer-facing languages. Text lives in apps/intake/text/*.json and the
+# frontend's src/i18n/locales/*.json; see the README's "Translations".
+LANGUAGES = [("en", "English"), ("es", "Español")]
 # Shop-local time zone: appointment times in emails and the admin use it.
 TIME_ZONE = env("TIME_ZONE", default="UTC")
 USE_I18N = True

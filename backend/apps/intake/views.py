@@ -19,6 +19,7 @@ from rest_framework.views import APIView
 from . import notifications, parts, pricing
 from .authentication import OptionalJWTAuthentication
 from .captcha import check_human
+from .i18n import t
 from .models import RequestMessage, ServiceRequest, Vehicle, hash_claim_token
 from .serializers import (
     CustomerRequestSerializer,
@@ -109,7 +110,7 @@ class ServiceRequestCreateView(APIView):
             {
                 "id": service_request.id,
                 "request_type": service_request.request_type,
-                "estimate": service_request.estimate,
+                "estimate": pricing.localize_estimate(service_request.estimate),
                 "preferred_date": service_request.preferred_date,
                 # Lets a guest attach this request to an account right away,
                 # and read its parts estimate while it's being generated.
@@ -134,7 +135,7 @@ class GuestPartsEstimateView(PublicAPIView):
             else None
         )
         if service_request is None:
-            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": t("validation__lookup--not-found")}, status=status.HTTP_404_NOT_FOUND)
         return Response({"parts_estimate": parts.as_payload(service_request)})
 
 
@@ -215,7 +216,7 @@ class ClaimRequestView(APIView):
         )
         if service_request is None:
             return Response(
-                {"detail": "That link is invalid or has already been used."},
+                {"detail": t("validation__claim--invalid")},
                 status=status.HTTP_404_NOT_FOUND,
             )
         with transaction.atomic():
@@ -326,7 +327,7 @@ class StaffPartsEstimateRetryView(APIView):
         service_request = get_object_or_404(ServiceRequest, pk=pk)
         if not parts.wants_estimate(service_request):
             return Response(
-                {"detail": "No price examples yet, or this request has no parts to estimate."},
+                {"detail": t("validation__parts--unavailable")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if service_request.parts_estimate_status != ServiceRequest.PartsStatus.PENDING:

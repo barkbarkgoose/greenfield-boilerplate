@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import PublicHeader from '@/components/PublicHeader.vue'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -41,9 +43,9 @@ async function handleSubmit() {
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'response' in error) {
       const err = error as { response?: { data?: unknown } }
-      errorMessage.value = firstError(err.response?.data) || 'Registration failed. Please try again.'
+      errorMessage.value = firstError(err.response?.data) || t('auth-register__error--generic')
     } else {
-      errorMessage.value = 'Registration failed. Please try again.'
+      errorMessage.value = t('auth-register__error--generic')
     }
   } finally {
     isLoading.value = false
@@ -59,28 +61,28 @@ const inputClass =
     <PublicHeader />
     <div class="flex flex-1 items-center justify-center px-4 py-12">
       <div class="w-full max-w-md rounded-3xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
-        <h1 class="text-2xl font-bold text-slate-900">Create your account</h1>
+        <h1 class="text-2xl font-bold text-slate-900">{{ t('auth-register__title') }}</h1>
         <p class="mt-2 text-sm text-slate-600">
-          Keep every car's repair history in one place, track your requests and message me directly.
-          Already have one?
+          {{ t('auth-register__intro') }}
+          {{ t('auth-register__login-prompt') }}
           <router-link :to="{ name: 'login', query: route.query }" class="font-semibold text-amber-700 hover:text-amber-600">
-            Sign in
+            {{ t('auth-register__login-link') }}
           </router-link>
         </p>
 
         <form class="mt-6 space-y-4" @submit.prevent="handleSubmit">
           <div>
-            <label for="name" class="block text-sm font-medium text-slate-700">Name</label>
+            <label for="name" class="block text-sm font-medium text-slate-700">{{ t('auth-register__name-label') }}</label>
             <input id="name" v-model="form.name" type="text" autocomplete="name" required :class="inputClass" />
           </div>
           <div>
-            <label for="email-address" class="block text-sm font-medium text-slate-700">Email</label>
+            <label for="email-address" class="block text-sm font-medium text-slate-700">{{ t('auth-register__email-label') }}</label>
             <input id="email-address" v-model="form.email" type="email" autocomplete="email" required :class="inputClass" />
           </div>
           <div>
-            <label for="password" class="block text-sm font-medium text-slate-700">Password</label>
+            <label for="password" class="block text-sm font-medium text-slate-700">{{ t('auth-register__password-label') }}</label>
             <input id="password" v-model="form.password" type="password" autocomplete="new-password" required minlength="8" :class="inputClass" />
-            <p class="mt-1 text-xs text-slate-500">At least 8 characters.</p>
+            <p class="mt-1 text-xs text-slate-500">{{ t('auth-register__password-hint') }}</p>
           </div>
 
           <p v-if="errorMessage" class="rounded-lg bg-red-50 p-3 text-sm text-red-800">{{ errorMessage }}</p>
@@ -90,7 +92,7 @@ const inputClass =
             :disabled="isLoading"
             class="w-full rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {{ isLoading ? 'Creating account…' : 'Create account' }}
+            {{ isLoading ? t('auth-register__submit--loading') : t('auth-register__submit') }}
           </button>
         </form>
       </div>

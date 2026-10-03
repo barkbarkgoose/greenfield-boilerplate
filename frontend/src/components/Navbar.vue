@@ -3,16 +3,19 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { business } from '@/config/business'
+import { useI18n } from 'vue-i18n'
+import LanguageToggle from '@/components/LanguageToggle.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
+const { t } = useI18n()
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isMenuOpen = ref(false)
 const profileMenu = ref<HTMLElement | null>(null)
 
-const displayName = computed(() => authStore.user?.name || authStore.user?.email || 'Account')
+const displayName = computed(() => authStore.user?.name || authStore.user?.email || t('app-nav__account-fallback'))
 const email = computed(() => authStore.user?.email || '')
 const initials = computed(() => {
   const name = authStore.user?.name?.trim()
@@ -34,8 +37,8 @@ const navItems = computed(() =>
         { name: 'Public site', path: '/' }
       ]
     : [
-        { name: 'My garage', path: '/account' },
-        { name: 'Book service', path: '/book' }
+        { name: t('app-nav__link--garage'), path: '/account' },
+        { name: t('app-nav__link--book'), path: '/book' }
       ]
 )
 
@@ -90,10 +93,11 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
         </div>
 
         <!-- Profile menu -->
-        <div ref="profileMenu" class="relative">
+        <div ref="profileMenu" class="relative flex items-center gap-1">
+          <LanguageToggle v-if="!authStore.isStaff" />
           <button
             type="button"
-            aria-label="Open account menu"
+            :aria-label="t('app-nav__menu-button')"
             :aria-expanded="isMenuOpen"
             class="flex items-center gap-2 rounded-full p-1.5 text-left transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/40"
             @click.stop="isMenuOpen = !isMenuOpen"
@@ -112,7 +116,7 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
 
           <div
             v-if="isMenuOpen"
-            class="absolute right-0 z-20 mt-2 w-64 origin-top-right rounded-2xl border border-gray-200 bg-white p-2 shadow-xl ring-1 ring-black/5"
+            class="absolute right-0 top-full z-20 mt-2 w-64 origin-top-right rounded-2xl border border-gray-200 bg-white p-2 shadow-xl ring-1 ring-black/5"
             role="menu"
           >
             <div class="border-b border-gray-100 px-3 py-3">
@@ -128,7 +132,7 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
               <svg class="h-5 w-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.25a7.5 7.5 0 0115 0" />
               </svg>
-              Profile & settings
+              {{ t('app-nav__menu-item--settings') }}
             </router-link>
             <button
               type="button"
@@ -139,7 +143,7 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
               <svg class="h-5 w-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6A2.25 2.25 0 005.25 5.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 12h9m0 0l-3-3m3 3l-3 3" />
               </svg>
-              Log out
+              {{ t('app-nav__menu-item--logout') }}
             </button>
           </div>
         </div>

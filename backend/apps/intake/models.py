@@ -150,6 +150,9 @@ class ServiceRequest(models.Model):
     preferred_date = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
 
+    # Language the customer used ("en" / "es"); their emails go out in it.
+    language = models.CharField(max_length=8, default="en")
+
     # Snapshot of the quote shown to the customer at submission time, so later
     # price changes don't rewrite what they were told.
     estimate = models.JSONField(default=dict, blank=True)

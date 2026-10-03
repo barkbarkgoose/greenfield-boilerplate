@@ -1,0 +1,11 @@
+{% autoescape off %}Hola {{ req.name }}:
+
+{{ business_name }} respondió a tu solicitud #{{ req.id }}{% if req.vehicle_label %} ({{ req.vehicle_label }}){% endif %}:
+
+{{ message.body }}
+
+{% if req.customer_id %}Ve la conversación completa o responde aquí:
+{{ site_url }}/account/requests/{{ req.id }}?lang=es{% else %}Solo responde a este correo para contestar.{% endif %}
+
+{{ business_name }}
+{% endautoescape %}

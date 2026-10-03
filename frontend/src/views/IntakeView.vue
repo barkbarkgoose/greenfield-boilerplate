@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import axios from 'axios'
 import PublicHeader from '@/components/PublicHeader.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
@@ -10,7 +11,7 @@ import { usePartsEstimate } from '@/composables/usePartsEstimate'
 import { useAuthStore } from '@/stores/auth'
 import { fetchMyRequest, fetchMyVehicles } from '@/services/garage'
 import type { Vehicle } from '@/types/garage'
-import { business, partsPolicy } from '@/config/business'
+import { business, phoneHref } from '@/config/business'
 import {
   decodeVin,
   fetchCatalog,
@@ -18,7 +19,7 @@ import {
   fetchGuestPartsEstimate,
   submitServiceRequest
 } from '@/services/intake'
-import { VIN_PATTERN, formatMoney, isoDateFromToday, normalizeVin } from '@/utils/intake'
+import { VIN_PATTERN, formatDate, formatMoney, isoDateFromToday, normalizeVin } from '@/utils/intake'
 import type {
   Catalog,
   Estimate,
@@ -27,6 +28,10 @@ import type {
   ServiceSelection
 } from '@/types/intake'
 
+// Text keys follow the form's sections: intake-header__*, intake-vehicle__*,
+// intake-services__*, intake-date__*, intake-contact__*, intake-estimate__*,
+// intake-confirmation__*, intake-errors__*.
+const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -127,7 +132,8 @@ let estimateTimer: ReturnType<typeof setTimeout> | undefined
 let estimateRequest = 0
 
 watch(
-  [selections, () => form.preferred_date, mode],
+  // Re-fetch on language change too: line item names come from the API.
+  [selections, () => form.preferred_date, mode, locale],
   () => {
     clearTimeout(estimateTimer)
     if (mode.value !== 'booking' || selections.value.length === 0) {
@@ -186,11 +192,11 @@ function flattenErrors(data: unknown): Record<string, string> {
   for (const [field, value] of Object.entries(data as Record<string, unknown>)) {
     if (Array.isArray(value)) {
       const first = value.find((v) => typeof v === 'string')
-      result[field] = first ?? 'Please check this field.'
+      result[field] = first ?? t('intake-errors__field--generic')
     } else if (typeof value === 'string') {
       result[field] = value
     } else {
-      result[field] = 'Please check this field.'
+      result[field] = t('intake-errors__field--generic')
     }
   }
   return result
@@ -198,21 +204,21 @@ function flattenErrors(data: unknown): Record<string, string> {
 
 function validateLocally(): Record<string, string> {
   const found: Record<string, string> = {}
-  if (!form.name.trim()) found.name = 'Your name, please.'
-  if (!form.phone.trim() && !form.email.trim()) found.phone = 'Leave a phone number or email so I can reach you.'
+  if (!form.name.trim()) found.name = t('intake-errors__name--required')
+  if (!form.phone.trim() && !form.email.trim()) found.phone = t('intake-errors__contact--required')
   const vin = normalizeVin(form.vin)
   if (mode.value === 'booking') {
-    if (!vin) found.vin = 'A VIN is needed so I can order the right parts.'
-    if (selections.value.length === 0) found.services = 'Pick at least one service.'
-    if (!form.preferred_date) found.preferred_date = 'Pick a preferred date.'
+    if (!vin) found.vin = t('intake-errors__vin--required')
+    if (selections.value.length === 0) found.services = t('intake-errors__services--required')
+    if (!form.preferred_date) found.preferred_date = t('intake-errors__date--required')
     if (selected.other && !form.other_description.trim()) {
-      found.other_description = 'Tell me a bit about the other work.'
+      found.other_description = t('intake-errors__other--required')
     }
   } else if (!form.notes.trim()) {
-    found.notes = 'Leave a short note about what you need.'
+    found.notes = t('intake-errors__notes--required')
   }
-  if (vin && !VIN_PATTERN.test(vin)) found.vin = 'A VIN is 17 letters and numbers (never I, O or Q).'
-  if (captchaRequired.value && !captchaToken.value) found.captcha_token = 'Please complete the verification.'
+  if (vin && !VIN_PATTERN.test(vin)) found.vin = t('intake-errors__vin--invalid')
+  if (captchaRequired.value && !captchaToken.value) found.captcha_token = t('intake-errors__captcha--required')
   return found
 }
 
@@ -251,13 +257,13 @@ async function handleSubmit() {
     if (axios.isAxiosError(error) && error.response?.status === 400) {
       errors.value = flattenErrors(error.response.data)
       generalError.value =
-        errors.value.captcha_token || errors.value.detail || 'Please fix the highlighted fields.'
+        errors.value.captcha_token || errors.value.detail || t('intake-errors__summary')
       // Turnstile tokens are single-use; get a fresh one for the retry.
       captcha.value?.reset()
     } else if (axios.isAxiosError(error) && error.response?.status === 429) {
-      generalError.value = `Too many requests from this connection. Please call or text ${business.phone}.`
+      generalError.value = t('intake-errors__rate-limited', { phone: business.phone })
     } else {
-      generalError.value = `Something went wrong sending your request. Please try again or call ${business.phone}.`
+      generalError.value = t('intake-errors__generic', { phone: business.phone })
     }
   } finally {
     submitting.value = false
@@ -298,12 +304,19 @@ onMounted(async () => {
       .catch(() => {})
   }
 
+  await loadCatalog()
+})
+
+async function loadCatalog() {
   try {
     catalog.value = await fetchCatalog()
+    catalogError.value = false
   } catch {
     catalogError.value = true
   }
-})
+}
+
+watch(locale, loadCatalog)
 
 const inputClass =
   'mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40'
@@ -316,30 +329,30 @@ const labelClass = 'block text-sm font-medium text-slate-700'
 
     <div class="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6">
       <!-- Confirmation -->
-      <section v-if="submitted" class="mx-auto max-w-2xl rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
+      <section v-if="submitted" class="intake-confirmation mx-auto max-w-2xl rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
         <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
           <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </div>
         <h1 class="mt-5 text-2xl font-bold text-slate-900">
-          {{ submitted.request_type === 'booking' ? 'Request received!' : 'Got your note!' }}
+          {{ submitted.request_type === 'booking' ? t('intake-confirmation__title--booking') : t('intake-confirmation__title--callback') }}
         </h1>
         <p class="mt-3 text-slate-600">
           <template v-if="submitted.request_type === 'booking'">
-            I'll look up parts for your vehicle and reach out to confirm a time
-            <template v-if="submitted.preferred_date">around {{ submitted.preferred_date }}</template>
-            along with a parts quote.
+            {{ submitted.preferred_date
+              ? t('intake-confirmation__body--booking-date', { date: formatDate(submitted.preferred_date) })
+              : t('intake-confirmation__body--booking') }}
           </template>
-          <template v-else>I'll get back to you as soon as I can.</template>
+          <template v-else>{{ t('intake-confirmation__body--callback') }}</template>
         </p>
         <p
           v-if="submitted.request_type === 'booking' && 'total' in submitted.estimate"
           class="mt-6 rounded-2xl bg-slate-50 p-4 text-slate-700"
         >
-          Estimated labor &amp; fees:
+          {{ t('intake-confirmation__labor-label') }}
           <span class="text-xl font-bold text-slate-900">{{ formatMoney(submitted.estimate.total) }}</span>
-          <span class="block text-xs text-slate-500">Plus parts at cost, zero markup. Final price confirmed before any work starts.</span>
+          <span class="block text-xs text-slate-500">{{ t('intake-confirmation__labor-note') }}</span>
         </p>
         <div v-if="partsEstimate.estimate.value" class="mt-4 rounded-2xl bg-white p-4 text-left ring-1 ring-slate-200">
           <PartsEstimateCard
@@ -349,23 +362,20 @@ const labelClass = 'block text-sm font-medium text-slate-700'
           />
         </div>
         <div v-if="submitted.claim_token" class="mt-6 rounded-2xl bg-amber-50 p-5 text-left ring-1 ring-amber-200">
-          <p class="font-semibold text-slate-900">Save this to your garage</p>
-          <p class="mt-1 text-sm text-slate-700">
-            Create a free account to track this request, message me with questions, and keep a repair
-            history for your car. The link is also in your confirmation email.
-          </p>
+          <p class="font-semibold text-slate-900">{{ t('intake-confirmation__claim-title') }}</p>
+          <p class="mt-1 text-sm text-slate-700">{{ t('intake-confirmation__claim-body') }}</p>
           <div class="mt-4 flex flex-col gap-2 sm:flex-row">
             <router-link
               :to="{ name: 'register', query: { redirect: `/claim/${submitted.claim_token}` } }"
               class="rounded-xl bg-slate-900 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-slate-800"
             >
-              Create account
+              {{ t('intake-confirmation__claim-register') }}
             </router-link>
             <router-link
               :to="{ name: 'login', query: { redirect: `/claim/${submitted.claim_token}` } }"
               class="rounded-xl px-4 py-2 text-center text-sm font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-white"
             >
-              I already have one
+              {{ t('intake-confirmation__claim-login') }}
             </router-link>
           </div>
         </div>
@@ -374,35 +384,30 @@ const labelClass = 'block text-sm font-medium text-slate-700'
           :to="{ name: 'account-request', params: { id: submitted.id } }"
           class="mt-6 inline-block font-semibold text-amber-700 hover:text-amber-600"
         >
-          Track it in your garage →
+          {{ t('intake-confirmation__garage-link') }} →
         </router-link>
-        <p class="mt-6 text-sm text-slate-500">Reference #{{ submitted.id }} · Questions? {{ business.phone }}</p>
+        <p class="mt-6 text-sm text-slate-500">{{ t('intake-confirmation__reference', { id: submitted.id, phone: business.phone }) }}</p>
         <div class="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <router-link to="/" class="rounded-xl border border-slate-300 px-5 py-2.5 font-semibold text-slate-700 hover:bg-slate-50">
-            Back to home
+          <router-link :to="{ name: 'home' }" class="rounded-xl border border-slate-300 px-5 py-2.5 font-semibold text-slate-700 hover:bg-slate-50">
+            {{ t('intake-confirmation__home-link') }}
           </router-link>
           <button type="button" class="rounded-xl bg-slate-900 px-5 py-2.5 font-semibold text-white hover:bg-slate-800" @click="startOver">
-            Submit another request
+            {{ t('intake-confirmation__again') }}
           </button>
         </div>
       </section>
 
       <template v-else>
-        <div class="max-w-2xl">
+        <div class="intake-header max-w-2xl">
           <h1 class="text-3xl font-bold tracking-tight text-slate-900">
-            {{ mode === 'booking' ? 'Book service' : 'Have me contact you' }}
+            {{ mode === 'booking' ? t('intake-header__title--booking') : t('intake-header__title--callback') }}
           </h1>
           <p class="mt-2 text-slate-600">
-            <template v-if="mode === 'booking'">
-              Tell me about your vehicle and the work you need. Your estimate updates as you go.
-            </template>
-            <template v-else>
-              Not sure what you need? Leave a note and I'll call, text or email you back.
-            </template>
+            {{ mode === 'booking' ? t('intake-header__intro--booking') : t('intake-header__intro--callback') }}
           </p>
         </div>
 
-        <div class="mt-6 inline-flex rounded-xl bg-slate-200 p-1" role="tablist" aria-label="Request type">
+        <div class="intake-mode mt-6 inline-flex rounded-xl bg-slate-200 p-1" role="tablist" :aria-label="t('intake-mode__label')">
           <button
             type="button"
             role="tab"
@@ -411,7 +416,7 @@ const labelClass = 'block text-sm font-medium text-slate-700'
             :class="mode === 'booking' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
             @click="setMode('booking')"
           >
-            Book service
+            {{ t('intake-mode__tab--booking') }}
           </button>
           <button
             type="button"
@@ -421,21 +426,21 @@ const labelClass = 'block text-sm font-medium text-slate-700'
             :class="mode === 'callback' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
             @click="setMode('callback')"
           >
-            Just contact me
+            {{ t('intake-mode__tab--callback') }}
           </button>
         </div>
 
         <form class="mt-8 grid gap-8 lg:grid-cols-[1fr_22rem]" novalidate @submit.prevent="handleSubmit">
           <div class="space-y-8">
             <!-- Vehicle -->
-            <fieldset class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-              <legend class="sr-only">Vehicle</legend>
+            <fieldset class="intake-vehicle rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+              <legend class="sr-only">{{ t('intake-vehicle__title') }}</legend>
               <h2 class="text-lg font-semibold text-slate-900">
-                Your vehicle
-                <span v-if="mode === 'callback'" class="text-sm font-normal text-slate-500">(optional)</span>
+                {{ t('intake-vehicle__title') }}
+                <span v-if="mode === 'callback'" class="text-sm font-normal text-slate-500">{{ t('intake-form__optional') }}</span>
               </h2>
               <div v-if="garage.length" class="mt-3 flex flex-wrap gap-2">
-                <span class="w-full text-sm text-slate-500">From your garage:</span>
+                <span class="w-full text-sm text-slate-500">{{ t('intake-vehicle__garage-label') }}</span>
                 <button
                   v-for="vehicle in garage"
                   :key="vehicle.id"
@@ -448,7 +453,7 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                 </button>
               </div>
               <div class="mt-4">
-                <label for="vin" :class="labelClass">VIN (Vehicle Identification Number)</label>
+                <label for="vin" :class="labelClass">{{ t('intake-vehicle__vin-label') }}</label>
                 <input
                   id="vin"
                   v-model="form.vin"
@@ -458,51 +463,51 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                   autocapitalize="characters"
                   spellcheck="false"
                   maxlength="20"
-                  placeholder="17 characters, e.g. 1HGCM82633A004352"
+                  :placeholder="t('intake-vehicle__vin-placeholder')"
                   :class="[inputClass, 'font-mono uppercase tracking-wider', errors.vin && 'border-red-400']"
                   :aria-invalid="!!errors.vin"
                 />
                 <p v-if="errors.vin" data-error class="mt-1 text-sm text-red-600">{{ errors.vin }}</p>
-                <p v-else-if="vinStatus === 'decoding'" class="mt-1 text-sm text-slate-500">Looking up your vehicle…</p>
+                <p v-else-if="vinStatus === 'decoding'" class="mt-1 text-sm text-slate-500">{{ t('intake-vehicle__vin-status--decoding') }}</p>
                 <p v-else-if="vinStatus === 'decoded'" class="mt-1 text-sm text-emerald-700">
-                  Found it: {{ form.vehicle_year }} {{ form.vehicle_make }} {{ form.vehicle_model }}
+                  {{ t('intake-vehicle__vin-status--decoded', { vehicle: [form.vehicle_year, form.vehicle_make, form.vehicle_model].filter(Boolean).join(' ') }) }}
                 </p>
                 <p v-else-if="vinStatus === 'unknown'" class="mt-1 text-sm text-slate-500">
-                  Couldn't look that VIN up automatically. Double-check it, or fill in the details below.
+                  {{ t('intake-vehicle__vin-status--unknown') }}
                 </p>
                 <p v-else-if="form.vin && !vinValid" class="mt-1 text-sm text-slate-500">
-                  {{ normalizeVin(form.vin).length }}/17 characters
+                  {{ t('intake-vehicle__vin-status--count', { count: normalizeVin(form.vin).length }) }}
                 </p>
                 <p v-else class="mt-1 text-xs text-slate-500">
-                  Find it on the driver-side dashboard (through the windshield), the door jamb sticker, or your registration/insurance card.
+                  {{ t('intake-vehicle__vin-hint') }}
                 </p>
               </div>
               <div class="mt-4 grid grid-cols-[6rem_1fr_1fr] gap-3">
                 <div>
-                  <label for="vehicle_year" :class="labelClass">Year</label>
+                  <label for="vehicle_year" :class="labelClass">{{ t('intake-vehicle__year-label') }}</label>
                   <input id="vehicle_year" v-model="form.vehicle_year" type="text" inputmode="numeric" maxlength="4" :class="inputClass" />
                 </div>
                 <div>
-                  <label for="vehicle_make" :class="labelClass">Make</label>
+                  <label for="vehicle_make" :class="labelClass">{{ t('intake-vehicle__make-label') }}</label>
                   <input id="vehicle_make" v-model="form.vehicle_make" type="text" maxlength="60" :class="inputClass" />
                 </div>
                 <div>
-                  <label for="vehicle_model" :class="labelClass">Model</label>
+                  <label for="vehicle_model" :class="labelClass">{{ t('intake-vehicle__model-label') }}</label>
                   <input id="vehicle_model" v-model="form.vehicle_model" type="text" maxlength="60" :class="inputClass" />
                 </div>
               </div>
             </fieldset>
 
             <!-- Services -->
-            <fieldset v-if="mode === 'booking'" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-              <legend class="sr-only">Services</legend>
-              <h2 class="text-lg font-semibold text-slate-900">Work needed</h2>
-              <p class="mt-1 text-sm text-slate-500">Labor prices shown. Brake and suspension work on the same axle is bundled for less.</p>
+            <fieldset v-if="mode === 'booking'" class="intake-services rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+              <legend class="sr-only">{{ t('intake-services__title') }}</legend>
+              <h2 class="text-lg font-semibold text-slate-900">{{ t('intake-services__title') }}</h2>
+              <p class="mt-1 text-sm text-slate-500">{{ t('intake-services__intro') }}</p>
               <p v-if="errors.services" data-error class="mt-2 text-sm text-red-600">{{ errors.services }}</p>
 
               <p v-if="catalogError" class="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">
-                The service list couldn't be loaded.
-                <button type="button" class="font-semibold underline" @click="setMode('callback')">Send me a note instead</button>.
+                {{ t('intake-services__load-error') }}
+                <button type="button" class="font-semibold underline" @click="setMode('callback')">{{ t('intake-services__load-error-link') }}</button>.
               </p>
               <div v-else-if="!catalog" class="mt-4 space-y-3">
                 <div v-for="n in 5" :key="n" class="h-16 animate-pulse rounded-xl bg-slate-100" />
@@ -525,9 +530,9 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                       <span class="flex items-baseline justify-between gap-3">
                         <span class="font-medium text-slate-900">{{ service.name }}</span>
                         <span class="whitespace-nowrap text-sm font-semibold text-slate-900">
-                          <template v-if="service.quote_required">Quoted</template>
+                          <template v-if="service.quote_required">{{ t('landing-pricing__quoted') }}</template>
                           <template v-else>
-                            {{ formatMoney(service.price) }}<span v-if="service.unit" class="font-normal text-slate-500">/{{ service.unit }}</span>
+                            {{ formatMoney(service.price) }}<span v-if="service.unit" class="font-normal text-slate-500">/{{ t(`landing-pricing__unit--${service.unit}`) }}</span>
                           </template>
                         </span>
                       </span>
@@ -538,7 +543,7 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                     v-if="selected[service.key] && service.max_quantity > 1"
                     class="flex flex-wrap items-center gap-2 border-t border-amber-200 px-4 py-3 pl-12"
                   >
-                    <span class="text-sm text-slate-600">How many axles?</span>
+                    <span class="text-sm text-slate-600">{{ t('intake-services__axles-label') }}</span>
                     <button
                       v-for="qty in service.max_quantity"
                       :key="qty"
@@ -547,22 +552,22 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                       :class="selected[service.key] === qty ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'"
                       @click="selected[service.key] = qty"
                     >
-                      {{ qty === 1 ? 'One (front or rear)' : 'Both' }}
+                      {{ qty === 1 ? t('intake-services__axles-option--one') : t('intake-services__axles-option--both') }}
                     </button>
                   </div>
                   <div v-if="selected[service.key] && service.quote_required" class="border-t border-amber-200 p-4">
-                    <label for="other_description" :class="labelClass">Describe the work or the problem</label>
+                    <label for="other_description" :class="labelClass">{{ t('intake-services__other-label') }}</label>
                     <textarea
                       id="other_description"
                       v-model="form.other_description"
                       rows="3"
                       maxlength="2000"
-                      placeholder="e.g. check engine light, squeal when turning, replace a window regulator…"
+                      :placeholder="t('intake-services__other-placeholder')"
                       :class="[inputClass, errors.other_description && 'border-red-400']"
                     />
                     <p v-if="errors.other_description" data-error class="mt-1 text-sm text-red-600">{{ errors.other_description }}</p>
                     <p class="mt-2 text-xs text-slate-500">
-                      Some jobs need a lift or shop equipment and may not be something I can do on-site. I'll let you know either way.
+                      {{ t('intake-services__other-note') }}
                     </p>
                   </div>
                 </li>
@@ -570,73 +575,70 @@ const labelClass = 'block text-sm font-medium text-slate-700'
             </fieldset>
 
             <!-- Date -->
-            <fieldset v-if="mode === 'booking'" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-              <legend class="sr-only">Preferred date</legend>
-              <h2 class="text-lg font-semibold text-slate-900">Preferred date</h2>
-              <p class="mt-1 text-sm text-slate-500">
-                Appointments are usually booked about {{ catalog?.booking_lead_days ?? 14 }} days out so I can order parts. I'll confirm the exact time with you.
-              </p>
+            <fieldset v-if="mode === 'booking'" class="intake-date rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+              <legend class="sr-only">{{ t('intake-date__title') }}</legend>
+              <h2 class="text-lg font-semibold text-slate-900">{{ t('intake-date__title') }}</h2>
+              <p class="mt-1 text-sm text-slate-500">{{ t('intake-date__intro', { days: catalog?.booking_lead_days ?? 14 }) }}</p>
               <input
                 id="preferred_date"
                 v-model="form.preferred_date"
                 type="date"
                 :min="minDate"
                 :class="[inputClass, 'max-w-xs', errors.preferred_date && 'border-red-400']"
-                aria-label="Preferred date"
+                :aria-label="t('intake-date__title')"
               />
               <p v-if="errors.preferred_date" data-error class="mt-1 text-sm text-red-600">{{ errors.preferred_date }}</p>
 
               <div v-if="scheduling?.isEmergency" class="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800 ring-1 ring-red-200">
-                <p class="font-semibold">Same-week emergency job</p>
+                <p class="font-semibold">{{ t('intake-date__warning-title--emergency') }}</p>
                 <p class="mt-1">
-                  Jobs within {{ catalog?.emergency_window_days }} days add a
-                  {{ catalog ? formatMoney(catalog.emergency_fee) : '' }} emergency fee and depend on availability.
-                  Parts will likely have to be bought locally, which is usually more expensive.
+                  {{ t('intake-date__warning-body--emergency', {
+                    days: catalog?.emergency_window_days ?? 7,
+                    fee: catalog ? formatMoney(catalog.emergency_fee) : ''
+                  }) }}
                 </p>
               </div>
               <div v-else-if="scheduling?.shortNotice" class="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
-                <p class="font-semibold">Short notice</p>
-                <p class="mt-1">
-                  There may not be time to order parts ahead, so they may have to come from a local store at a higher price.
-                </p>
+                <p class="font-semibold">{{ t('intake-date__warning-title--short-notice') }}</p>
+                <p class="mt-1">{{ t('intake-date__warning-body--short-notice') }}</p>
               </div>
             </fieldset>
 
             <!-- Contact -->
-            <fieldset class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-              <legend class="sr-only">Contact details</legend>
-              <h2 class="text-lg font-semibold text-slate-900">How do I reach you?</h2>
+            <fieldset class="intake-contact rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+              <legend class="sr-only">{{ t('intake-contact__title') }}</legend>
+              <h2 class="text-lg font-semibold text-slate-900">{{ t('intake-contact__title') }}</h2>
               <div class="mt-4 grid gap-4 sm:grid-cols-2">
                 <div class="sm:col-span-2">
-                  <label for="name" :class="labelClass">Name</label>
+                  <label for="name" :class="labelClass">{{ t('intake-contact__name-label') }}</label>
                   <input id="name" v-model="form.name" type="text" autocomplete="name" maxlength="120" :class="[inputClass, errors.name && 'border-red-400']" />
                   <p v-if="errors.name" data-error class="mt-1 text-sm text-red-600">{{ errors.name }}</p>
                 </div>
                 <div>
-                  <label for="phone" :class="labelClass">Phone</label>
+                  <label for="phone" :class="labelClass">{{ t('intake-contact__phone-label') }}</label>
                   <input id="phone" v-model="form.phone" type="tel" autocomplete="tel" maxlength="32" :class="[inputClass, errors.phone && 'border-red-400']" />
                 </div>
                 <div>
-                  <label for="email" :class="labelClass">Email</label>
+                  <label for="email" :class="labelClass">{{ t('intake-contact__email-label') }}</label>
                   <input id="email" v-model="form.email" type="email" autocomplete="email" :class="[inputClass, errors.email && 'border-red-400']" />
                   <p v-if="errors.email" data-error class="mt-1 text-sm text-red-600">{{ errors.email }}</p>
                 </div>
                 <p v-if="errors.phone" data-error class="text-sm text-red-600 sm:col-span-2">{{ errors.phone }}</p>
                 <div v-if="mode === 'booking'" class="sm:col-span-2">
-                  <label for="service_address" :class="labelClass">Where is the vehicle? <span class="font-normal text-slate-500">(address or ZIP)</span></label>
+                  <label for="service_address" :class="labelClass">{{ t('intake-contact__address-label') }} <span class="font-normal text-slate-500">{{ t('intake-contact__address-hint') }}</span></label>
                   <input id="service_address" v-model="form.service_address" type="text" autocomplete="street-address" maxlength="255" :class="inputClass" />
                 </div>
                 <div class="sm:col-span-2">
                   <label for="notes" :class="labelClass">
-                    {{ mode === 'booking' ? 'Anything else I should know?' : 'What can I help with?' }}
-                    <span v-if="mode === 'booking'" class="font-normal text-slate-500">(optional)</span>
+                    {{ mode === 'booking' ? t('intake-contact__notes-label--booking') : t('intake-contact__notes-label--callback') }}
+                    <span v-if="mode === 'booking'" class="font-normal text-slate-500">{{ t('intake-form__optional') }}</span>
                   </label>
                   <textarea
                     id="notes"
                     v-model="form.notes"
                     :rows="mode === 'booking' ? 3 : 5"
                     maxlength="4000"
-                    :placeholder="mode === 'booking' ? 'Front or rear axle, symptoms, parts preferences (brand, OEM, budget), parking/access notes, best time to call…' : 'Describe what\'s going on with the car and the best way and time to reach you.'"
+                    :placeholder="mode === 'booking' ? t('intake-contact__notes-placeholder--booking') : t('intake-contact__notes-placeholder--callback')"
                     :class="[inputClass, errors.notes && 'border-red-400']"
                   />
                   <p v-if="errors.notes" data-error class="mt-1 text-sm text-red-600">{{ errors.notes }}</p>
@@ -646,64 +648,60 @@ const labelClass = 'block text-sm font-medium text-slate-700'
           </div>
 
           <!-- Estimate sidebar -->
-          <aside id="estimate" class="relative scroll-mt-20 pb-16 lg:sticky lg:top-24 lg:self-start lg:pb-0">
+          <aside id="estimate" class="intake-estimate relative scroll-mt-20 pb-16 lg:sticky lg:top-24 lg:self-start lg:pb-0">
             <div class="rounded-2xl bg-slate-900 p-6 text-white shadow-lg">
               <template v-if="mode === 'booking'">
-                <h2 class="text-lg font-semibold">Your estimate</h2>
-                <p v-if="selections.length === 0" class="mt-3 text-sm text-slate-400">
-                  Pick a service to see your price.
-                </p>
+                <h2 class="text-lg font-semibold">{{ t('intake-estimate__title') }}</h2>
+                <p v-if="selections.length === 0" class="mt-3 text-sm text-slate-400">{{ t('intake-estimate__empty') }}</p>
                 <div v-else-if="estimate" class="mt-4 text-sm" :class="estimating && 'opacity-60'">
                   <ul class="space-y-2">
                     <li v-for="item in estimate.line_items" :key="item.key" class="flex justify-between gap-3">
                       <span class="text-slate-300">
                         {{ item.name }}<span v-if="item.quantity > 1"> × {{ item.quantity }}</span>
                       </span>
-                      <span>{{ item.quote_required ? 'TBD' : formatMoney(item.amount) }}</span>
+                      <span>{{ item.quote_required ? t('estimate-breakdown__quote-pending') : formatMoney(item.amount) }}</span>
                     </li>
                     <li v-for="discount in estimate.discounts" :key="discount.key" class="flex justify-between gap-3 text-emerald-400">
                       <span>{{ discount.name }}<span v-if="discount.units > 1"> × {{ discount.units }}</span></span>
                       <span>−{{ formatMoney(discount.amount) }}</span>
                     </li>
                     <li class="flex justify-between gap-3 border-t border-slate-700 pt-2">
-                      <span class="text-slate-300">Service call (travel)</span>
+                      <span class="text-slate-300">{{ t('intake-estimate__line--service-call') }}</span>
                       <span>{{ formatMoney(estimate.service_call_fee) }}</span>
                     </li>
                     <li v-if="Number(estimate.emergency_fee) > 0" class="flex justify-between gap-3 text-red-300">
-                      <span>Same-week emergency fee</span>
+                      <span>{{ t('intake-estimate__line--emergency-fee') }}</span>
                       <span>{{ formatMoney(estimate.emergency_fee) }}</span>
                     </li>
                   </ul>
                   <div class="mt-4 flex items-baseline justify-between border-t border-slate-700 pt-4">
-                    <span class="font-semibold">Estimated total</span>
+                    <span class="font-semibold">{{ t('estimate-breakdown__total') }}</span>
                     <span class="text-2xl font-bold text-amber-400">
                       {{ formatMoney(estimate.total) }}<span v-if="estimate.needs_custom_quote" class="text-base">+</span>
                     </span>
                   </div>
-                  <p class="mt-1 text-xs text-slate-400">About {{ estimate.labor_hours }} hr of labor. Parts not included.</p>
+                  <p class="mt-1 text-xs text-slate-400">{{ t('intake-estimate__labor-hours', { hours: estimate.labor_hours }) }}</p>
                 </div>
-                <p v-else-if="estimating" class="mt-3 text-sm text-slate-400">Calculating…</p>
-                <p v-else class="mt-3 text-sm text-slate-400">The estimate couldn't be calculated right now. You can still submit.</p>
+                <p v-else-if="estimating" class="mt-3 text-sm text-slate-400">{{ t('intake-estimate__calculating') }}</p>
+                <p v-else class="mt-3 text-sm text-slate-400">{{ t('intake-estimate__error') }}</p>
 
                 <ul class="mt-5 space-y-2 border-t border-slate-700 pt-4 text-xs text-slate-400">
-                  <li>{{ partsPolicy.short }} Quoted after I look up your VIN.</li>
-                  <li>Want a specific brand, OEM, or the budget option? Say so in your notes.</li>
-                  <li>Parts bought locally on short notice are likely to cost more than ordered parts.</li>
-                  <li v-if="selected.other">"Other" work is quoted after I review it and may not be something I can cover.</li>
+                  <li>{{ t('parts-policy__short') }} {{ t('intake-estimate__note--quoted-after-vin') }}</li>
+                  <li>{{ t('intake-estimate__note--preferences') }}</li>
+                  <li>{{ t('intake-estimate__note--short-notice') }}</li>
+                  <li v-if="selected.other">{{ t('intake-estimate__note--other') }}</li>
                 </ul>
               </template>
               <template v-else>
-                <h2 class="text-lg font-semibold">I'll reach out</h2>
-                <p class="mt-3 text-sm text-slate-300">
-                  Leave a note and I'll get back to you, usually within a business day. Prefer to talk now?
-                </p>
-                <a :href="`tel:${business.phone.replace(/[^\d+]/g, '')}`" class="mt-3 inline-block font-semibold text-amber-400 hover:text-amber-300">
+                <h2 class="text-lg font-semibold">{{ t('intake-estimate__callback-title') }}</h2>
+                <p class="mt-3 text-sm text-slate-300">{{ t('intake-estimate__callback-body') }}</p>
+                <a :href="phoneHref()" class="mt-3 inline-block font-semibold text-amber-400 hover:text-amber-300">
                   {{ business.phone }}
                 </a>
               </template>
 
               <div class="absolute -left-[9999px] h-px w-px overflow-hidden" aria-hidden="true">
-                <label for="website">Leave this empty</label>
+                <label for="website">{{ t('intake-form__honeypot-label') }}</label>
                 <input id="website" v-model="form.website" type="text" name="website" tabindex="-1" autocomplete="off" />
               </div>
               <TurnstileWidget v-if="captchaRequired" ref="captcha" class="mt-5" @update:token="captchaToken = $event" />
@@ -714,10 +712,10 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                 :disabled="submitting"
                 class="mt-5 w-full rounded-xl bg-amber-400 px-5 py-3 font-semibold text-slate-900 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {{ submitting ? 'Sending…' : mode === 'booking' ? 'Request appointment' : 'Send note' }}
+                {{ submitting ? t('intake-estimate__submit--sending') : mode === 'booking' ? t('intake-estimate__submit--booking') : t('intake-estimate__submit--callback') }}
               </button>
               <p v-if="mode === 'booking'" class="mt-3 text-center text-xs text-slate-400">
-                No payment now. I'll confirm the final price before any work starts.
+                {{ t('intake-estimate__no-payment') }}
               </p>
             </div>
           </aside>
@@ -726,12 +724,12 @@ const labelClass = 'block text-sm font-medium text-slate-700'
           <a
             v-if="mode === 'booking' && estimate"
             href="#estimate"
-            class="fixed inset-x-0 bottom-0 z-20 flex items-center justify-between border-t border-slate-700 bg-slate-900 px-4 py-3 text-white lg:hidden"
+            class="intake-mobile-total fixed inset-x-0 bottom-0 z-20 flex items-center justify-between border-t border-slate-700 bg-slate-900 px-4 py-3 text-white lg:hidden"
           >
-            <span class="text-sm text-slate-300">Estimated total</span>
+            <span class="text-sm text-slate-300">{{ t('estimate-breakdown__total') }}</span>
             <span class="text-lg font-bold text-amber-400">
               {{ formatMoney(estimate.total) }}<span v-if="estimate.needs_custom_quote">+</span>
-              <span class="ml-1 text-xs font-medium text-slate-400">See details ↓</span>
+              <span class="ml-1 text-xs font-medium text-slate-400">{{ t('intake-mobile-total__details-link') }} ↓</span>
             </span>
           </a>
         </form>

@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from . import parts, pricing
+from .i18n import current_language, t
 from .models import RequestMessage, ServiceRequest, Vehicle
 
 # 17 characters, digits and capital letters except I, O and Q (ISO 3779).
@@ -30,7 +31,7 @@ class ServiceItemSerializer(serializers.Serializer):
         service = pricing.SERVICES_BY_KEY[attrs["key"]]
         if attrs["quantity"] > service.max_quantity:
             raise serializers.ValidationError(
-                {"quantity": f"{service.name} allows at most {service.max_quantity}."}
+                {"quantity": t("validation__service--too-many", service=service.name, max=service.max_quantity)}
             )
         return attrs
 
@@ -38,13 +39,13 @@ class ServiceItemSerializer(serializers.Serializer):
 def _validate_services(items):
     keys = [item["key"] for item in items]
     if len(keys) != len(set(keys)):
-        raise serializers.ValidationError("Each service can only be listed once.")
+        raise serializers.ValidationError(t("validation__services--duplicate"))
     return items
 
 
 def _validate_preferred_date(value):
     if value is not None and value < timezone.localdate():
-        raise serializers.ValidationError("Pick a date that hasn't passed yet.")
+        raise serializers.ValidationError(t("validation__date--past"))
     return value
 
 
@@ -94,28 +95,26 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
     def validate_vin(self, value):
         vin = re.sub(r"[\s-]", "", value or "").upper()
         if vin and not VIN_RE.match(vin):
-            raise serializers.ValidationError(
-                "A VIN is 17 letters and numbers (never I, O or Q)."
-            )
+            raise serializers.ValidationError(t("validation__vin--invalid"))
         return vin
 
     def validate(self, attrs):
         errors = {}
         if not attrs.get("phone") and not attrs.get("email"):
-            errors["phone"] = "Leave a phone number or email so I can reach you."
+            errors["phone"] = t("validation__contact--required")
 
         services = attrs.get("services") or []
         if attrs.get("request_type", ServiceRequest.RequestType.BOOKING) == ServiceRequest.RequestType.BOOKING:
             if not attrs.get("vin"):
-                errors["vin"] = "A VIN is needed so I can order the right parts."
+                errors["vin"] = t("validation__vin--required")
             if not services:
-                errors["services"] = "Pick at least one service."
+                errors["services"] = t("validation__services--required")
             if not attrs.get("preferred_date"):
-                errors["preferred_date"] = "Pick a preferred date."
+                errors["preferred_date"] = t("validation__date--required")
             if any(s["key"] == "other" for s in services) and not attrs.get("other_description"):
-                errors["other_description"] = "Tell me a bit about the other work."
+                errors["other_description"] = t("validation__other--required")
         elif not attrs.get("notes"):
-            errors["notes"] = "Leave a short note about what you need."
+            errors["notes"] = t("validation__notes--required")
 
         if errors:
             raise serializers.ValidationError(errors)
@@ -125,6 +124,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         items = validated_data.pop("services", []) or []
         quantities = pricing.normalize_quantities(items)
         validated_data["services"] = quantities
+        validated_data["language"] = current_language()
         if quantities:
             quote = pricing.estimate(
                 quantities, validated_data.get("preferred_date"), timezone.localdate()
@@ -161,9 +161,9 @@ class MessageSerializer(serializers.ModelSerializer):
     def validate_body(self, value):
         value = value.strip()
         if not value:
-            raise serializers.ValidationError("Write a message first.")
+            raise serializers.ValidationError(t("validation__message--empty"))
         if len(value) > 4000:
-            raise serializers.ValidationError("Keep it under 4000 characters.")
+            raise serializers.ValidationError(t("validation__message--too-long"))
         return value
 
 
@@ -241,6 +241,11 @@ class CustomerRequestSerializer(RequestSummarySerializer):
     def get_parts_estimate(self, obj):
         return parts.as_payload(obj)
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["estimate"] = pricing.localize_estimate(data.get("estimate") or {})
+        return data
+
 
 class VehicleSerializer(VehicleSummarySerializer):
     history = serializers.SerializerMethodField()
@@ -270,12 +275,14 @@ class StaffRequestSerializer(CustomerRequestSerializer):
             "customer_request_count",
             "internal_notes",
             "vehicle_type",
+            "language",
             "updated_at",
             "notify_customer",
         ]
         read_only_fields = [
             f
-            for f in CustomerRequestSerializer.Meta.fields + ["customer", "updated_at", "parts_estimate"]
+            for f in CustomerRequestSerializer.Meta.fields
+            + ["customer", "updated_at", "parts_estimate", "language"]
             if f not in {"status", "scheduled_for", "completed_on", "odometer", "final_total"}
         ]
 
@@ -294,7 +301,7 @@ class StaffRequestSerializer(CustomerRequestSerializer):
         )
         if status == ServiceRequest.Status.SCHEDULED and not scheduled_for:
             raise serializers.ValidationError(
-                {"scheduled_for": "Set the appointment time to mark this scheduled."}
+                {"scheduled_for": t("validation__schedule--time-required")}
             )
         return attrs
 

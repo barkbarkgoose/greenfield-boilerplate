@@ -1,4 +1,5 @@
 // Pure helpers for the intake form (no API or router imports, so they're unit-testable).
+import { intlLocale } from '@/i18n'
 
 export const VIN_PATTERN = /^[A-HJ-NPR-Z0-9]{17}$/
 
@@ -8,7 +9,7 @@ export function normalizeVin(value: string): string {
 
 export function formatMoney(value: string | number): string {
   const amount = typeof value === 'string' ? Number(value) : value
-  return amount.toLocaleString('en-US', {
+  return amount.toLocaleString(intlLocale(), {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: amount % 1 === 0 ? 0 : 2
@@ -31,7 +32,7 @@ export function isoDateFromToday(days: number): string {
 export function formatDate(value: string | null | undefined): string {
   if (!value) return ''
   const [y, m, d] = value.slice(0, 10).split('-').map(Number)
-  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+  return new Date(y, m - 1, d).toLocaleDateString(intlLocale(), {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -41,7 +42,7 @@ export function formatDate(value: string | null | undefined): string {
 
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return ''
-  return new Date(value).toLocaleString('en-US', {
+  return new Date(value).toLocaleString(intlLocale(), {
     weekday: 'short',
     month: 'short',
     day: 'numeric',

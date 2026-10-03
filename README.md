@@ -163,8 +163,8 @@ uv run --with-requirements requirements.txt python -m pytest
 
 | Path | Who | What |
 |------|-----|------|
-| `/` | Anyone | Landing page: services, labor prices, bundles, booking policy |
-| `/book` | Anyone | Intake form with live estimate; `?mode=callback` for "just contact me" |
+| `/` (`/es`) | Anyone | Landing page: services, labor prices, bundles, booking policy |
+| `/book` (`/es/book`) | Anyone | Intake form with live estimate; `?mode=callback` for "just contact me" |
 | `/account` | Customers | "My garage": each car with its repair history |
 | `/account/requests/:id` | Customers | Request details, appointment, notes/questions thread |
 | `/claim/:token` | Customers | Attaches a guest booking to the signed-in account |
@@ -251,6 +251,139 @@ Emails are sent inline and failures are logged, never shown to the customer.
   submissions, on when both keys are set: `TURNSTILE_SECRET_KEY` (backend keychain) and
   `VITE_TURNSTILE_SITE_KEY` (frontend `.env`). Signed-in customers skip it.
 - Per-IP rate limits: 10 submissions/hour, 120 estimates/hour.
+
+## Translations (English / Spanish)
+
+Customers can use the site in English or Spanish. What's translated:
+
+- **Customer pages:** landing page, booking form, garage, request pages, sign in/up,
+  header/footer, parts estimate.
+- **Server text:** service names, deals, discount lines, error messages, email subjects.
+- **Customer emails:** sent in the language the customer booked in.
+
+Your side stays English: the staff dashboard, your notification emails (which say which
+language the customer used), and the Django admin. Messages customers type are shown as
+written.
+
+### Where the text lives
+
+| What | File(s) |
+|------|---------|
+| Page text | `frontend/src/i18n/locales/en.json`, `es.json` |
+| Server text (services, deals, errors, email subjects) | `backend/apps/intake/text/en.json`, `es.json` |
+| Customer email bodies | `backend/apps/intake/templates/intake/email/customer_*.txt` (English) and `customer_*.es.txt` (Spanish) |
+| Business name, phone, email (not translated) | `frontend/src/config/business.ts`, `BUSINESS_NAME` setting |
+
+### Key names (BEM)
+
+Keys say where the text appears: `block__element--modifier`.
+
+- **block:** the page section or component, e.g. `landing-hero`, `intake-vehicle`,
+  `garage-request`, `site-header`. Page sections carry the block as a CSS class
+  (`<section class="landing-hero">`), so inspecting an element in the browser tells you
+  which keys it uses.
+- **element:** the piece of text inside it, e.g. `title`, `vin-label`, `cta`.
+- **modifier** (optional): a variant, e.g. `--primary`, `--booking` / `--callback`, or a
+  data value like `--brake_pads` or `--scheduled`.
+
+Examples: `intake-vehicle__vin-label`, `landing-hero__cta--primary`,
+`request-status__label--scheduled`, `service__name--brake_pads` (server).
+
+Common blocks: `site-header`, `site-footer`, `app-nav`, `language-toggle`, `landing-*`,
+`intake-*` (booking form sections), `garage-*` (customer account), `auth-login`,
+`auth-register`, `parts-estimate`, `parts-policy`, `estimate-breakdown`,
+`message-thread`, `request-status`, `page-meta` (browser titles and descriptions).
+Server side: `service`, `bundle`, `deal`, `discount`, `vehicle-type`, `validation`,
+`email`, `email-status`.
+
+**Placeholders** use braces in both languages and must match: `"Hi {name}"` /
+`"Hola {name}"`. **Plurals** (page text only) are separated by `" | "`:
+`"{count} new reply | {count} new replies"`.
+
+### Common changes
+
+- **Reword something:** edit the value in both `en.json` and `es.json`. Not sure which key
+  it is? Search the JSON for the English text.
+- **Add text to a page:** add a key to both files and use `t('your-block__element')` in the
+  component (`const { t } = useI18n()`).
+- **Add a service:** add it in `pricing.py`, then `service__name--<key>` and
+  `service__description--<key>` to both server text files.
+- **Change an email:** edit both `customer_x.txt` and `customer_x.es.txt`.
+
+### Reviewing translations in a spreadsheet
+
+```bash
+python i18n_review.py export translations.csv   # every string: area, key, english, spanish
+# ...edit the english/spanish columns in Excel / Google Sheets / Numbers...
+python i18n_review.py import translations.csv   # writes the JSON files back
+```
+
+The import refuses unknown keys or empty cells and changes nothing in that case. Email
+bodies aren't in the CSV; review the `customer_*.es.txt` templates directly.
+
+### Tests that guard the pairs
+
+```bash
+cd frontend && pnpm vitest run src/i18n                                              # page text
+cd backend && uv run --with-requirements requirements.txt python -m pytest apps/intake/test_i18n.py   # server text + emails
+```
+
+They fail when:
+
+- a key exists in one language but not the other, or is empty
+- the two languages use different `{placeholders}` or plural branches
+- a key isn't BEM-shaped
+- the code uses a key that doesn't exist, or a key is no longer used (page text)
+- a customer email template has no Spanish version
+
+The frontend build also type-checks that `es.json` has every English key.
+
+### How the language is chosen
+
+1. An `/es/...` address, or `?lang=es` / `?lang=en` on any link. Spanish emails add
+   `?lang=es` to their links, so they open in Spanish on any device.
+2. Otherwise the visitor's last choice from the EN/ES toggle in the header, saved in
+   their browser.
+3. Otherwise their browser language (Spanish browsers get Spanish).
+
+The frontend sends the language to the API (`Accept-Language`), so server text comes back
+in it. Each booking records its language (`ServiceRequest.language`), and customer emails
+use that language. Saved estimates store keys rather than text, so the same booking reads
+in Spanish for the customer and English for you.
+
+### Spanish addresses (`/es/`) and search engines
+
+The landing page and booking form have Spanish addresses: `/es` and `/es/book`. Spanish
+visitors on `/` or `/book` are redirected to them, and the toggle switches between the
+two. Each page adds `hreflang` links (`en`, `es`, `x-default`) and a translated `<title>`
+and description, so search engines can index both versions. Signed-in pages (garage,
+requests) don't need separate addresses; they follow the saved language.
+
+When you deploy:
+
+- **Serve the app for `/es` paths.** The host must return `index.html` for `/es` and
+  `/es/*`, the same single-page-app fallback every other route needs (e.g. Netlify
+  `/* /index.html 200`, nginx `try_files $uri /index.html`).
+- **Add both versions to your sitemap**: `/`, `/es`, `/book`, `/es/book`.
+- **Check Search Console** after launch. Google renders JavaScript, so the hreflang links
+  and titles are picked up. If Spanish pages don't show up in results after a few weeks,
+  prerendering the two public pages (e.g. `vite-plugin-ssg` or a prerender service) is the
+  next step.
+
+**To give another public page a Spanish address:** change its route path to
+`'/:locale(es)?/your-path'`, add `localized: true` to its `meta`, and add
+`page-meta__title--<route-name>` (and optionally `page-meta__description--<route-name>`)
+to both page text files.
+
+### Adding a third language
+
+1. Copy both `en.json` files to `<code>.json` and translate them.
+2. Add the code to `SUPPORTED_LOCALES` in `frontend/src/i18n/index.ts`, to `LANGUAGES` in
+   `backend/apps/intake/i18n.py`, and to `LANGUAGES` in `config/settings/base.py`.
+3. Add `customer_*.<code>.txt` email templates.
+4. Add `language-toggle__option--<code>`. The header toggle (`LanguageToggle.vue`) flips
+   between two languages, so replace it with a small menu.
+5. To give it its own addresses, widen the route pattern, e.g. `/:locale(es|fr)?`.
 
 ## Add New Apps
 

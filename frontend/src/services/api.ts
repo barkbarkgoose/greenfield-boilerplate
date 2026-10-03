@@ -2,6 +2,7 @@ import axios from 'axios'
 import type { AxiosError } from 'axios'
 import router from '@/router'
 import { clearStoredAuth, TOKEN_KEY } from '@/utils/authStorage'
+import { currentLocale } from '@/i18n'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8800',
@@ -16,6 +17,8 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    // The API answers in this language (service names, errors, emails).
+    config.headers['Accept-Language'] = currentLocale()
     return config
   },
   (error) => Promise.reject(error)

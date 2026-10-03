@@ -28,6 +28,8 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
+from .i18n import t
+
 # --- Business inputs (edit these) ------------------------------------------
 
 TARGET_HOURLY_RATE = Decimal("50.00")
@@ -81,12 +83,19 @@ SERVICE_CALL_FEE = round_up_5(
 @dataclass(frozen=True)
 class Service:
     key: str
-    name: str
-    description: str
     labor_hours: Decimal
     unit: str | None = None
     max_quantity: int = 1
     quote_required: bool = False
+
+    # Labels come from the text map in the active language (see i18n.py).
+    @property
+    def name(self) -> str:
+        return t(f"service__name--{self.key}")
+
+    @property
+    def description(self) -> str:
+        return t(f"service__description--{self.key}")
 
     @property
     def price(self) -> Decimal:
@@ -98,9 +107,15 @@ class Service:
 @dataclass(frozen=True)
 class Bundle:
     key: str
-    name: str
-    description: str
     hours_saved_per_unit: Decimal
+
+    @property
+    def name(self) -> str:
+        return t(f"bundle__name--{self.key}")
+
+    @property
+    def description(self) -> str:
+        return t(f"bundle__description--{self.key}")
 
     def units(self, quantities: dict[str, int]) -> int:
         pads = quantities.get("brake_pads", 0)
@@ -120,62 +135,44 @@ class Bundle:
 SERVICES: tuple[Service, ...] = (
     Service(
         "brake_pads",
-        "Brake pads",
-        "Replace pads, clean and lube slides, check fluid.",
         Decimal("1.0"),
         unit="axle",
         max_quantity=2,
     ),
     Service(
         "brake_rotors",
-        "Brake rotors",
-        "Replace rotors on the axle; pairs well with new pads.",
         Decimal("1.25"),
         unit="axle",
         max_quantity=2,
     ),
     Service(
         "suspension",
-        "Suspension (struts / shocks)",
-        "Replace struts or shocks on the axle. An alignment afterwards is recommended and not included.",
         Decimal("2.5"),
         unit="axle",
         max_quantity=2,
     ),
     Service(
         "oil_change",
-        "Oil change",
-        "Drain, new filter, refill, and a quick fluid and tire check.",
         Decimal("0.5"),
     ),
     Service(
         "spark_plugs",
-        "Spark plugs",
-        "Most 4-cylinder engines. V6/V8 or plugs under the intake may need a custom quote.",
         Decimal("1.0"),
     ),
     Service(
         "alternator",
-        "Alternator",
-        "Remove and replace the alternator, test charging output.",
         Decimal("1.5"),
     ),
     Service(
         "belt_replacement",
-        "Belt replacement (serpentine)",
-        "Serpentine/accessory belt. Timing belts are quoted separately.",
         Decimal("0.75"),
     ),
     Service(
         "air_filter",
-        "Air filter",
-        "Engine air filter; cabin filter on request.",
         Decimal("0.25"),
     ),
     Service(
         "other",
-        "Other (may not be covered)",
-        "Describe the problem and I'll let you know if it's something I can take on.",
         Decimal("0"),
         quote_required=True,
     ),
@@ -186,42 +183,92 @@ SERVICES_BY_KEY = {service.key: service for service in SERVICES}
 BUNDLES: tuple[Bundle, ...] = (
     Bundle(
         "pads_rotors",
-        "Pads + rotors bundle",
-        "Rotors come off anyway when pads are replaced, so the second job is mostly free time.",
         Decimal("0.75"),
     ),
     Bundle(
         "brakes_suspension",
-        "Brakes + suspension bundle",
-        "The wheel and caliper are already off, so suspension work on the same axle goes faster.",
         Decimal("0.5"),
     ),
 )
 
 
+def _sentence(text: str) -> str:
+    """Capitalize the first letter (Spanish labels can start with a service name)."""
+    return text[:1].upper() + text[1:]
+
+
+def _hours(value: Decimal) -> str:
+    return format(value.normalize(), "f")
+
+
+def _addon_names() -> str:
+    first, second = (SERVICES_BY_KEY[key].name.lower() for key in FREE_ADDON_KEYS)
+    return t("list__pair", first=first, second=second)
+
+
+BUNDLES_BY_KEY = {bundle.key: bundle for bundle in BUNDLES}
+
+
 def deals() -> list[dict]:
     """Customer-facing descriptions of the visit-level discounts."""
-    addon_names = " and ".join(
-        SERVICES_BY_KEY[key].name.lower() for key in FREE_ADDON_KEYS
-    )
-    hours = format(FREE_ADDON_MIN_HOURS.normalize(), "f")
+    addons = _addon_names()
+    rates = {
+        "rate": f"{VOLUME_RATE:.0f}",
+        "threshold": f"{VOLUME_THRESHOLD:.0f}",
+        "labor_rate": f"{LABOR_RATE:.0f}",
+    }
     return [
         {
             "key": "free_addons",
-            "name": f"Free {addon_names}",
-            "description": (
-                f"Booking {hours}+ hours of other work? The {addon_names} labor is on the house."
+            "name": _sentence(t("deal__name--free-addons", addons=addons)),
+            "description": t(
+                "deal__description--free-addons", addons=addons, hours=_hours(FREE_ADDON_MIN_HOURS)
             ),
         },
         {
             "key": "volume_rate",
-            "name": f"Big-job rate: ${VOLUME_RATE:.0f}/hr",
-            "description": (
-                f"Once labor on a visit passes ${VOLUME_THRESHOLD:.0f}, every extra hour is "
-                f"billed at ${VOLUME_RATE:.0f}/hr instead of ${LABOR_RATE:.0f}/hr."
-            ),
+            "name": t("deal__name--volume-rate", **rates),
+            "description": t("deal__description--volume-rate", **rates),
         },
     ]
+
+
+def discount_label(key: str) -> str:
+    """Label for a discount line, by its key, in the active language."""
+    if key in BUNDLES_BY_KEY:
+        return BUNDLES_BY_KEY[key].name
+    if key == "volume_rate":
+        return t(
+            "discount__name--volume-rate",
+            rate=f"{VOLUME_RATE:.0f}",
+            threshold=f"{VOLUME_THRESHOLD:.0f}",
+        )
+    service_key = key.removeprefix("free_")
+    return _sentence(
+        t(
+            "discount__name--free-addon",
+            service=SERVICES_BY_KEY[service_key].name.lower(),
+            hours=_hours(FREE_ADDON_MIN_HOURS),
+        )
+    )
+
+
+def localize_estimate(quote: dict) -> dict:
+    """Re-render a stored estimate's labels in the active language.
+
+    Estimates are saved with keys; labels follow whoever is reading (the
+    customer in Spanish, the mechanic in English).
+    """
+    if not quote or "line_items" not in quote:
+        return quote
+    localized = dict(quote)
+    localized["line_items"] = [
+        {**item, "name": SERVICES_BY_KEY[item["key"]].name} for item in quote["line_items"]
+    ]
+    localized["discounts"] = [
+        {**discount, "name": discount_label(discount["key"])} for discount in quote["discounts"]
+    ]
+    return localized
 
 
 def catalog() -> dict:
@@ -340,7 +387,7 @@ def estimate(quantities: dict[str, int], preferred_date: date | None, today: dat
                 discounts.append(
                     {
                         "key": f"free_{key}",
-                        "name": f"Free {service.name.lower()} with a {format(FREE_ADDON_MIN_HOURS.normalize(), 'f')}+ hr job",
+                        "name": discount_label(f"free_{key}"),
                         "units": 1,
                         "amount": str(amount),
                     }
@@ -358,7 +405,7 @@ def estimate(quantities: dict[str, int], preferred_date: date | None, today: dat
             discounts.append(
                 {
                     "key": "volume_rate",
-                    "name": f"Big-job rate (${VOLUME_RATE:.0f}/hr past ${VOLUME_THRESHOLD:.0f})",
+                    "name": discount_label("volume_rate"),
                     "units": 1,
                     "amount": str(amount),
                 }

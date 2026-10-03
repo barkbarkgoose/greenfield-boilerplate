@@ -1,5 +1,8 @@
 """Email notifications for the intake flow.
 
+Customer emails go out in the language of the request (``customer_*.es.txt``
+templates for Spanish); emails to you are always English.
+
 Every send is best-effort: a mail server hiccup is logged and never fails the
 request that triggered it. Call these from ``transaction.on_commit`` so mail
 only goes out for data that was actually saved.
@@ -12,38 +15,49 @@ import logging
 from django.conf import settings
 from django.core.mail import EmailMessage
 from django.template.loader import render_to_string
-from django.utils import timezone
+from django.utils import timezone, translation
 
+from . import pricing
+from .i18n import normalize, t
 from .models import RequestMessage, ServiceRequest
 
 logger = logging.getLogger(__name__)
 
-STATUS_HEADLINES = {
-    ServiceRequest.Status.CONTACTED: "I'm looking into it and will be in touch.",
-    ServiceRequest.Status.SCHEDULED: "your appointment is booked.",
-    ServiceRequest.Status.COMPLETED: "the work is done. Thanks for your business!",
-    ServiceRequest.Status.DECLINED: (
-        "unfortunately this isn't a job I can take on. Sorry about that, and "
-        "feel free to reach out for anything else."
-    ),
-}
+OWNER_LANGUAGE = "en"
 
 
-def _context(req: ServiceRequest, **extra) -> dict:
+def _context(req: ServiceRequest, language: str, **extra) -> dict:
+    with translation.override(language):
+        estimate = pricing.localize_estimate(req.estimate)
     return {
         "req": req,
+        "estimate": estimate,
         "site_url": settings.SITE_URL,
         "business_name": getattr(settings, "BUSINESS_NAME", ""),
         **extra,
     }
 
 
-def _send(subject: str, template: str, context: dict, to: list[str], reply_to: list[str] | None = None) -> None:
+def _template(base: str, language: str) -> str:
+    """``customer_x.es.txt`` for Spanish, ``customer_x.txt`` for English."""
+    return f"intake/email/{base}.txt" if language == "en" else f"intake/email/{base}.{language}.txt"
+
+
+def _send(
+    subject: str,
+    template: str,
+    context: dict,
+    to: list[str],
+    language: str,
+    reply_to: list[str] | None = None,
+) -> None:
     recipients = [address for address in to if address]
     if not recipients:
         return
     try:
-        body = render_to_string(f"intake/email/{template}", context).strip() + "\n"
+        # Activating the language also localizes dates in the templates.
+        with translation.override(language):
+            body = render_to_string(_template(template, language), context).strip() + "\n"
         EmailMessage(
             subject=subject,
             body=body,
@@ -59,22 +73,32 @@ def _owner_emails() -> list[str]:
     return list(settings.INTAKE_NOTIFY_EMAILS or [])
 
 
+def _lang_query(language: str) -> str:
+    return "" if language == "en" else f"?lang={language}"
+
+
 def notify_new_request(req: ServiceRequest, claim_token: str | None = None) -> None:
-    kind = "booking" if req.request_type == ServiceRequest.RequestType.BOOKING else "contact request"
-    flag = " [EMERGENCY]" if req.is_emergency else ""
+    owner = OWNER_LANGUAGE
+    kind = "booking" if req.request_type == ServiceRequest.RequestType.BOOKING else "callback"
+    flag = t("email__subject--owner-emergency-flag", owner) if req.is_emergency else ""
     _send(
-        f"New {kind} #{req.id} from {req.name}{flag}",
-        "owner_new_request.txt",
-        _context(req),
+        t(f"email__subject--owner-new-{kind}", owner, id=req.id, name=req.name, flag=flag),
+        "owner_new_request",
+        _context(req, owner, language_label=t(f"email-language__label--{req.language}", owner)),
         _owner_emails(),
+        owner,
         reply_to=[req.email],
     )
-    claim_url = f"{settings.SITE_URL}/claim/{claim_token}" if claim_token else None
+    language = normalize(req.language)
+    claim_url = (
+        f"{settings.SITE_URL}/claim/{claim_token}{_lang_query(language)}" if claim_token else None
+    )
     _send(
-        f"We got your request (#{req.id})",
-        "customer_request_received.txt",
-        _context(req, claim_url=claim_url),
+        t("email__subject--customer-received", language, id=req.id),
+        "customer_request_received",
+        _context(req, language, claim_url=claim_url),
         [req.email],
+        language,
         reply_to=_owner_emails(),
     )
 
@@ -82,34 +106,48 @@ def notify_new_request(req: ServiceRequest, claim_token: str | None = None) -> N
 def notify_customer_message(message: RequestMessage) -> None:
     req = message.request
     _send(
-        f"New note from {req.name} on #{req.id}",
-        "owner_customer_message.txt",
-        _context(req, message=message),
+        t("email__subject--owner-customer-note", OWNER_LANGUAGE, name=req.name, id=req.id),
+        "owner_customer_message",
+        _context(req, OWNER_LANGUAGE, message=message),
         _owner_emails(),
+        OWNER_LANGUAGE,
         reply_to=[req.email],
     )
 
 
 def notify_staff_reply(message: RequestMessage) -> None:
     req = message.request
+    language = normalize(req.language)
     _send(
-        f"Reply about your request #{req.id}",
-        "customer_staff_reply.txt",
-        _context(req, message=message),
+        t("email__subject--customer-reply", language, id=req.id),
+        "customer_staff_reply",
+        _context(req, language, message=message),
         [req.email],
+        language,
         reply_to=_owner_emails(),
     )
 
 
 def notify_status_change(req: ServiceRequest) -> None:
-    headline = STATUS_HEADLINES.get(req.status)
-    if not headline:
+    if req.status == ServiceRequest.Status.NEW:
         return
+    language = normalize(req.language)
     scheduled_for = timezone.localtime(req.scheduled_for) if req.scheduled_for else None
     _send(
-        f"Request #{req.id}: {req.get_status_display()}",
-        "customer_status_update.txt",
-        _context(req, headline=headline, scheduled_for=scheduled_for),
+        t(
+            "email__subject--customer-status",
+            language,
+            id=req.id,
+            status=t(f"email-status__label--{req.status}", language),
+        ),
+        "customer_status_update",
+        _context(
+            req,
+            language,
+            headline=t(f"email-status__headline--{req.status}", language),
+            scheduled_for=scheduled_for,
+        ),
         [req.email],
+        language,
         reply_to=_owner_emails(),
     )

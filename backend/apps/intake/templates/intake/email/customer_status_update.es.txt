@@ -1,0 +1,15 @@
+{% autoescape off %}Hola {{ req.name }}:
+
+Actualización de tu solicitud #{{ req.id }}{% if req.vehicle_label %} ({{ req.vehicle_label }}){% endif %}: {{ headline }}
+{% if req.status == "scheduled" and req.scheduled_for %}
+Cita: {{ scheduled_for|date:"l j \d\e F \a \l\a\s g:i A" }}
+Lugar: {{ req.service_address|default:"según lo acordado" }}
+{% endif %}{% if req.status == "completed" and req.final_total %}
+Total: ${{ req.final_total }}
+{% endif %}
+{% if req.customer_id %}Detalles: {{ site_url }}/account/requests/{{ req.id }}?lang=es
+{% endif %}
+¿Preguntas? Solo responde a este correo.
+
+{{ business_name }}
+{% endautoescape %}

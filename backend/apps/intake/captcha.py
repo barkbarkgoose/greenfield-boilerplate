@@ -16,6 +16,8 @@ import urllib.request
 from django.conf import settings
 from rest_framework import serializers
 
+from .i18n import t
+
 logger = logging.getLogger(__name__)
 
 VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
@@ -45,11 +47,9 @@ def verify_turnstile(token: str, remote_ip: str | None = None) -> bool:
 def check_human(request) -> None:
     """Raise a 400 ValidationError if the submission looks automated."""
     if str(request.data.get(HONEYPOT_FIELD) or "").strip():
-        raise serializers.ValidationError({"detail": "Submission rejected."})
+        raise serializers.ValidationError({"detail": t("validation__submission--rejected")})
     if not captcha_enabled():
         return
     token = str(request.data.get("captcha_token") or "")
     if not token or not verify_turnstile(token, request.META.get("REMOTE_ADDR")):
-        raise serializers.ValidationError(
-            {"captcha_token": "Please complete the verification and try again."}
-        )
+        raise serializers.ValidationError({"captcha_token": t("validation__captcha--failed")})
