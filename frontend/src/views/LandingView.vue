@@ -80,7 +80,7 @@ onMounted(async () => {
           </li>
           <li class="rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
             <p class="font-semibold text-white">Bundle and save</p>
-            <p class="mt-1 text-slate-400">Pads, rotors and suspension share teardown time, so they cost less together.</p>
+            <p class="mt-1 text-slate-400">Shared teardown time is discounted, oil changes are free on big jobs, and long jobs drop to a lower hourly rate.</p>
           </li>
           <li class="rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
             <p class="font-semibold text-white">Booked ~{{ leadDays }} days out</p>
@@ -159,6 +159,14 @@ onMounted(async () => {
                 {{ bundle.name }}: save {{ formatMoney(bundle.discount_per_unit) }} per axle
               </p>
               <p class="mt-1 text-sm text-emerald-800">{{ bundle.description }}</p>
+            </div>
+            <div
+              v-for="deal in catalog.deals"
+              :key="deal.key"
+              class="rounded-2xl bg-emerald-50 p-5 ring-1 ring-emerald-200"
+            >
+              <p class="font-semibold text-emerald-900">{{ deal.name }}</p>
+              <p class="mt-1 text-sm text-emerald-800">{{ deal.description }}</p>
             </div>
           </div>
         </template>

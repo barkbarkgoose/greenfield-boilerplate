@@ -70,6 +70,46 @@ class TestPricing:
         labor = Decimal(quote["subtotal"]) - Decimal(quote["discount_total"])
         assert labor >= Decimal(quote["labor_hours"]) * pricing.TARGET_HOURLY_RATE
 
+    def test_addons_free_on_long_jobs(self):
+        quote = pricing.estimate(
+            {"brake_pads": 2, "brake_rotors": 2, "oil_change": 1, "air_filter": 1}, None, TODAY
+        )
+        keys = [d["key"] for d in quote["discounts"]]
+        assert "free_oil_change" in keys and "free_air_filter" in keys
+        # Labor is just the bundled brake job; the add-ons cost nothing.
+        brakes_only = pricing.estimate({"brake_pads": 2, "brake_rotors": 2}, None, TODAY)
+        assert quote["total"] == brakes_only["total"]
+
+    def test_addons_charged_on_short_jobs(self):
+        # One axle of pads is 1 hour: under the 2-hour bar.
+        quote = pricing.estimate({"brake_pads": 1, "oil_change": 1}, None, TODAY)
+        assert quote["discounts"] == []
+
+    def test_addon_hours_do_not_count_toward_the_bar(self):
+        # 1.75 hr of other work + 0.5 hr oil change: still not free.
+        quote = pricing.estimate({"brake_pads": 1, "brake_rotors": 1, "oil_change": 1}, None, TODAY)
+        assert "free_oil_change" not in [d["key"] for d in quote["discounts"]]
+
+    def test_volume_rate_past_threshold(self):
+        quote = pricing.estimate({"brake_pads": 2, "brake_rotors": 2, "suspension": 2}, None, TODAY)
+        volume = next(d for d in quote["discounts"] if d["key"] == "volume_rate")
+        before_volume = Decimal(quote["subtotal"]) - (
+            Decimal(quote["discount_total"]) - Decimal(volume["amount"])
+        )
+        over = before_volume - pricing.VOLUME_THRESHOLD
+        # Labor past the threshold bills at roughly VOLUME_RATE (rounded in the customer's favor).
+        expected = over * (pricing.LABOR_RATE - pricing.VOLUME_RATE) / pricing.LABOR_RATE
+        assert expected - 5 < Decimal(volume["amount"]) <= expected
+        labor = Decimal(quote["subtotal"]) - Decimal(quote["discount_total"])
+        assert labor >= pricing.VOLUME_THRESHOLD
+
+    def test_no_volume_rate_at_or_under_threshold(self):
+        quote = pricing.estimate({"brake_pads": 1, "brake_rotors": 1, "suspension": 1}, None, TODAY)
+        assert "volume_rate" not in [d["key"] for d in quote["discounts"]]
+
+    def test_catalog_lists_deals(self):
+        assert [d["key"] for d in pricing.catalog()["deals"]] == ["free_addons", "volume_rate"]
+
     def test_same_week_is_emergency(self):
         quote = pricing.estimate({"oil_change": 1}, TODAY + timedelta(days=3), TODAY)
         assert quote["scheduling"]["is_emergency"] is True

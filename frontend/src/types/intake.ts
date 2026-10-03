@@ -19,6 +19,7 @@ export interface CatalogBundle {
 export interface Catalog {
   services: CatalogService[]
   bundles: CatalogBundle[]
+  deals: { key: string; name: string; description: string }[]
   labor_rate: string
   service_call_fee: string
   emergency_fee: string

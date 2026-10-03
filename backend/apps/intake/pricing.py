@@ -15,8 +15,11 @@ How prices are built
 * Brakes, rotors and suspension share the same teardown (wheel off, caliper
   off), so doing them together saves real hours. Those saved hours come off
   the bill as a bundle discount.
-* Prices round *up* to the nearest $5 and discounts round *down*, so rounding
-  never takes the effective rate below target.
+* Small add-ons (oil change, air filter) are free when the rest of the visit
+  is already a long job, since the car is up and the tools are out.
+* Big jobs get a volume rate: once labor passes ``VOLUME_THRESHOLD``, every
+  further hour bills at ``VOLUME_RATE`` instead of ``LABOR_RATE``.
+* Prices round *up* to the nearest $5 and discounts round *down*.
 """
 
 from __future__ import annotations
@@ -39,6 +42,18 @@ EMERGENCY_WINDOW_DAYS = 7
 """Jobs requested within this many days of today are same-week emergencies."""
 
 EMERGENCY_FEE = Decimal("75.00")
+
+FREE_ADDON_KEYS = ("oil_change", "air_filter")
+"""Add-ons thrown in free once the rest of the visit is long enough."""
+
+FREE_ADDON_MIN_HOURS = Decimal("2")
+"""Labor hours the *other* work must reach before the add-ons are free."""
+
+VOLUME_THRESHOLD = Decimal("200.00")
+"""Labor revenue (after bundles, before fees) at which the volume rate starts."""
+
+VOLUME_RATE = Decimal("25.00")
+"""Hourly rate for labor past ``VOLUME_THRESHOLD``."""
 
 # --- Derived rates ----------------------------------------------------------
 
@@ -184,6 +199,31 @@ BUNDLES: tuple[Bundle, ...] = (
 )
 
 
+def deals() -> list[dict]:
+    """Customer-facing descriptions of the visit-level discounts."""
+    addon_names = " and ".join(
+        SERVICES_BY_KEY[key].name.lower() for key in FREE_ADDON_KEYS
+    )
+    hours = format(FREE_ADDON_MIN_HOURS.normalize(), "f")
+    return [
+        {
+            "key": "free_addons",
+            "name": f"Free {addon_names}",
+            "description": (
+                f"Booking {hours}+ hours of other work? The {addon_names} labor is on the house."
+            ),
+        },
+        {
+            "key": "volume_rate",
+            "name": f"Big-job rate: ${VOLUME_RATE:.0f}/hr",
+            "description": (
+                f"Once labor on a visit passes ${VOLUME_THRESHOLD:.0f}, every extra hour is "
+                f"billed at ${VOLUME_RATE:.0f}/hr instead of ${LABOR_RATE:.0f}/hr."
+            ),
+        },
+    ]
+
+
 def catalog() -> dict:
     """Public, JSON-serializable view of the catalog and booking policy."""
     return {
@@ -209,6 +249,7 @@ def catalog() -> dict:
             }
             for b in BUNDLES
         ],
+        "deals": deals(),
         "labor_rate": str(LABOR_RATE),
         "service_call_fee": str(SERVICE_CALL_FEE),
         "emergency_fee": str(EMERGENCY_FEE),
@@ -245,7 +286,11 @@ def scheduling(preferred_date: date | None, today: date) -> dict:
 
 
 def estimate(quantities: dict[str, int], preferred_date: date | None, today: date) -> dict:
-    """Price a set of services. Labor only; parts are quoted separately."""
+    """Price a set of services. Labor only; parts are quoted separately.
+
+    Discounts apply in order: per-axle bundles, free add-ons, then the volume
+    rate on whatever labor remains.
+    """
     line_items = []
     subtotal = Decimal("0.00")
     labor_hours = Decimal("0")
@@ -280,6 +325,44 @@ def estimate(quantities: dict[str, int], preferred_date: date | None, today: dat
         discounts.append(
             {"key": bundle.key, "name": bundle.name, "units": units, "amount": str(amount)}
         )
+
+    # Free add-ons: only when the *other* work is already a long job.
+    addon_hours = sum(
+        (SERVICES_BY_KEY[key].labor_hours * quantities[key] for key in FREE_ADDON_KEYS if quantities.get(key)),
+        Decimal("0"),
+    )
+    if addon_hours and labor_hours - addon_hours >= FREE_ADDON_MIN_HOURS:
+        for key in FREE_ADDON_KEYS:
+            if quantities.get(key):
+                service = SERVICES_BY_KEY[key]
+                amount = service.price * quantities[key]
+                discount_total += amount
+                discounts.append(
+                    {
+                        "key": f"free_{key}",
+                        "name": f"Free {service.name.lower()} with a {format(FREE_ADDON_MIN_HOURS.normalize(), 'f')}+ hr job",
+                        "units": 1,
+                        "amount": str(amount),
+                    }
+                )
+
+    # Volume rate: labor past the threshold bills at VOLUME_RATE. Labor dollars
+    # convert to hours at LABOR_RATE, so the discount is the rate difference.
+    net_labor = subtotal - discount_total
+    if net_labor > VOLUME_THRESHOLD:
+        amount = round_down_5(
+            (net_labor - VOLUME_THRESHOLD) * (LABOR_RATE - VOLUME_RATE) / LABOR_RATE
+        )
+        if amount > 0:
+            discount_total += amount
+            discounts.append(
+                {
+                    "key": "volume_rate",
+                    "name": f"Big-job rate (${VOLUME_RATE:.0f}/hr past ${VOLUME_THRESHOLD:.0f})",
+                    "units": 1,
+                    "amount": str(amount),
+                }
+            )
 
     schedule = scheduling(preferred_date, today)
     has_work = bool(line_items)
