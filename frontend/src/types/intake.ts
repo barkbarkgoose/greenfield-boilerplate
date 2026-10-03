@@ -85,10 +85,37 @@ export interface ServiceRequestCreated {
   estimate: Estimate | Record<string, never>
   preferred_date: string | null
   claim_token: string | null
+  parts_estimate_status: 'pending' | null
 }
 
 export interface DecodedVehicle {
   year: string
   make: string
   model: string
+}
+
+export interface PartsEstimatePart {
+  name: string
+  quantity: number
+  unit_low: string
+  unit_high: string
+}
+
+export interface PartsEstimate {
+  status: 'pending' | 'ready' | 'unavailable'
+  vehicle_summary?: string
+  confidence?: 'low' | 'medium' | 'high'
+  assumptions?: string
+  services?: {
+    service_key: string
+    name: string
+    quantity: number
+    parts: PartsEstimatePart[]
+    low: string
+    high: string
+    notes: string
+  }[]
+  low?: string
+  high?: string
+  generated_at?: string
 }

@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from .models import RequestMessage, ServiceRequest, Vehicle
+from .models import PartsEstimate, RequestMessage, ServiceRequest, Vehicle
 
 
 class RequestMessageInline(admin.TabularInline):
@@ -36,6 +36,8 @@ class ServiceRequestAdmin(admin.ModelAdmin):
         "estimated_total",
         "is_emergency",
         "claim_token_hash",
+        "parts_estimate",
+        "parts_estimate_status",
         "created_at",
         "updated_at",
     ]
@@ -47,3 +49,9 @@ class VehicleAdmin(admin.ModelAdmin):
     list_display = ["__str__", "vin", "owner", "created_at"]
     search_fields = ["vin", "make", "model", "owner__email"]
     raw_id_fields = ["owner"]
+
+
+@admin.register(PartsEstimate)
+class PartsEstimateAdmin(admin.ModelAdmin):
+    list_display = ["__str__", "model_name", "generated_at"]
+    readonly_fields = ["key", "vehicle", "services", "result", "model_name", "generated_at"]

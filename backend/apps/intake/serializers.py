@@ -5,7 +5,7 @@ import re
 from django.utils import timezone
 from rest_framework import serializers
 
-from . import pricing
+from . import parts, pricing
 from .models import RequestMessage, ServiceRequest, Vehicle
 
 # 17 characters, digits and capital letters except I, O and Q (ISO 3779).
@@ -219,6 +219,7 @@ class StaffRequestSummarySerializer(RequestSummarySerializer):
 class CustomerRequestSerializer(RequestSummarySerializer):
     messages = MessageSerializer(many=True, read_only=True)
     vehicle = VehicleSummarySerializer(read_only=True)
+    parts_estimate = serializers.SerializerMethodField()
 
     class Meta(RequestSummarySerializer.Meta):
         fields = RequestSummarySerializer.Meta.fields + [
@@ -233,8 +234,12 @@ class CustomerRequestSerializer(RequestSummarySerializer):
             "other_description",
             "notes",
             "estimate",
+            "parts_estimate",
             "messages",
         ]
+
+    def get_parts_estimate(self, obj):
+        return parts.as_payload(obj)
 
 
 class VehicleSerializer(VehicleSummarySerializer):
@@ -269,7 +274,7 @@ class StaffRequestSerializer(CustomerRequestSerializer):
         ]
         read_only_fields = [
             f
-            for f in CustomerRequestSerializer.Meta.fields + ["customer", "updated_at"]
+            for f in CustomerRequestSerializer.Meta.fields + ["customer", "updated_at", "parts_estimate"]
             if f not in {"status", "scheduled_for", "completed_on", "odometer", "final_total"}
         ]
 

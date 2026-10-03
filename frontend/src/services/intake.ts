@@ -3,6 +3,7 @@ import type {
   Catalog,
   DecodedVehicle,
   Estimate,
+  PartsEstimate,
   ServiceRequestCreated,
   ServiceRequestPayload,
   ServiceSelection
@@ -49,4 +50,14 @@ export async function decodeVin(vin: string): Promise<DecodedVehicle | null> {
   } catch {
     return null
   }
+}
+
+// Read-only: a guest can see their own request's parts estimate with the
+// claim token from submission. This never triggers a new estimate.
+export async function fetchGuestPartsEstimate(claimToken: string): Promise<PartsEstimate | null> {
+  const { data } = await api.post<{ parts_estimate: PartsEstimate | null }>(
+    '/api/v1/intake/requests/parts-estimate/',
+    { claim_token: claimToken }
+  )
+  return data.parts_estimate
 }

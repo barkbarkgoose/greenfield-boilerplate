@@ -9,6 +9,10 @@ SECRET_KEY = "test-secret-key-not-for-production"
 DEBUG = True
 
 # Run fast password hashing and keep the test database in memory.
+# Never call the real model from tests; estimate synchronously when enabled.
+ANTHROPIC_API_KEY = ""
+PARTS_ESTIMATE_ASYNC = False
+
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 DATABASES = {

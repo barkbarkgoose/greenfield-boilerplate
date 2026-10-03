@@ -157,6 +157,7 @@ REST_FRAMEWORK = {
         "intake_submit": "10/hour",
         "intake_message": "30/hour",
         "intake_claim": "20/hour",
+        "intake_parts": "240/hour",
     },
 }
 
@@ -220,6 +221,17 @@ BUSINESS_NAME = env("BUSINESS_NAME", default="Wrench on Wheels")
 
 # Public URL of the frontend, used for links inside emails.
 SITE_URL = (_keychain_or_env("SITE_URL", "SITE_URL", default="http://localhost:5177") or "").rstrip("/")
+
+# --- AI parts estimates ------------------------------------------------------
+# Off unless an Anthropic API key is set (put it in the keychain). See
+# apps/intake/parts.py for how the feature is locked down.
+ANTHROPIC_API_KEY = _keychain_or_env("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", default="")
+PARTS_ESTIMATE_ENABLED = env.bool("PARTS_ESTIMATE_ENABLED", default=True)
+PARTS_ESTIMATE_MODEL = env("PARTS_ESTIMATE_MODEL", default="claude-opus-5-5")
+# Hard cap on new model calls per rolling 24 hours (cached reuse is free).
+PARTS_ESTIMATE_DAILY_LIMIT = env.int("PARTS_ESTIMATE_DAILY_LIMIT", default=50)
+# Run estimates on a background thread so booking stays fast.
+PARTS_ESTIMATE_ASYNC = True
 
 # --- Captcha (Cloudflare Turnstile) -------------------------------------------
 # Leave unset to disable (local dev, tests). Set together with the frontend's

@@ -1,4 +1,4 @@
-import type { Estimate } from '@/types/intake'
+import type { Estimate, PartsEstimate } from '@/types/intake'
 
 export type RequestStatus = 'new' | 'contacted' | 'scheduled' | 'completed' | 'declined'
 
@@ -66,6 +66,7 @@ export interface RequestDetail extends RequestSummary {
   other_description: string
   notes: string
   estimate: Estimate | Record<string, never>
+  parts_estimate: PartsEstimate | null
   messages: RequestMessage[]
 }
 

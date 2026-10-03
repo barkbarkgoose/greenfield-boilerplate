@@ -1,4 +1,5 @@
 import api from '@/services/api'
+import type { PartsEstimate } from '@/types/intake'
 import type {
   Paginated,
   RequestDetail,
@@ -77,4 +78,10 @@ export async function updateStaffRequest(
 
 export async function sendStaffMessage(id: number, body: string): Promise<RequestMessage> {
   return (await api.post<RequestMessage>(`/api/v1/manage/requests/${id}/messages/`, { body })).data
+}
+
+export async function retryPartsEstimate(id: number): Promise<PartsEstimate | null> {
+  return (
+    await api.post<{ parts_estimate: PartsEstimate | null }>(`/api/v1/manage/requests/${id}/parts-estimate/`)
+  ).data.parts_estimate
 }

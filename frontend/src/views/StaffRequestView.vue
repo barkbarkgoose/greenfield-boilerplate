@@ -4,8 +4,15 @@ import { useRoute } from 'vue-router'
 import axios from 'axios'
 import EstimateBreakdown from '@/components/EstimateBreakdown.vue'
 import MessageThread from '@/components/MessageThread.vue'
+import PartsEstimateCard from '@/components/PartsEstimateCard.vue'
+import { usePartsEstimate } from '@/composables/usePartsEstimate'
 import StatusBadge from '@/components/StatusBadge.vue'
-import { fetchStaffRequest, sendStaffMessage, updateStaffRequest } from '@/services/garage'
+import {
+  fetchStaffRequest,
+  retryPartsEstimate,
+  sendStaffMessage,
+  updateStaffRequest
+} from '@/services/garage'
 import type { RequestStatus, StaffRequestDetail } from '@/types/garage'
 import type { Estimate } from '@/types/intake'
 import {
@@ -36,6 +43,19 @@ const savedAt = ref<Date | null>(null)
 const estimate = computed(() =>
   request.value && 'total' in request.value.estimate ? (request.value.estimate as Estimate) : null
 )
+const parts = usePartsEstimate(async () => (await fetchStaffRequest(route.params.id as string)).parts_estimate)
+const retrying = ref(false)
+
+async function retryParts() {
+  if (!request.value) return
+  retrying.value = true
+  try {
+    parts.start(await retryPartsEstimate(request.value.id))
+  } finally {
+    retrying.value = false
+  }
+}
+
 const vehicleLabel = computed(() => request.value?.vehicle?.label || request.value?.vehicle_label || '')
 const smsHref = computed(() => (request.value?.phone ? `sms:${request.value.phone.replace(/[^\d+]/g, '')}` : ''))
 const mapsHref = computed(() =>
@@ -101,6 +121,7 @@ onMounted(async () => {
   try {
     request.value = await fetchStaffRequest(route.params.id as string)
     fillForm(request.value)
+    parts.start(request.value.parts_estimate)
   } catch {
     loadError.value = true
   }
@@ -184,6 +205,28 @@ const labelClass = 'block text-sm font-medium text-slate-700'
               </div>
               <EstimateBreakdown v-if="estimate" :estimate="estimate" />
             </div>
+          </section>
+
+          <!-- Parts -->
+          <section v-if="parts.estimate.value" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <h2 class="font-semibold text-slate-900">AI parts estimate</h2>
+              <button
+                v-if="parts.estimate.value.status === 'unavailable'"
+                type="button"
+                :disabled="retrying"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium ring-1 ring-slate-300 hover:bg-slate-50 disabled:opacity-50"
+                @click="retryParts"
+              >
+                {{ retrying ? 'Retrying…' : 'Try again' }}
+              </button>
+            </div>
+            <PartsEstimateCard
+              :estimate="parts.estimate.value"
+              :labor-total="estimate?.total ?? null"
+              :vehicle-label="vehicleLabel"
+            />
+            <p class="mt-2 text-xs text-slate-500">The customer sees this same estimate.</p>
           </section>
 
           <!-- Messages -->

@@ -16,7 +16,7 @@ from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import notifications, pricing
+from . import notifications, parts, pricing
 from .authentication import OptionalJWTAuthentication
 from .captcha import check_human
 from .models import RequestMessage, ServiceRequest, Vehicle, hash_claim_token
@@ -103,6 +103,7 @@ class ServiceRequestCreateView(APIView):
             transaction.on_commit(
                 lambda: notifications.notify_new_request(service_request, claim_token)
             )
+            transaction.on_commit(lambda: parts.schedule(service_request))
 
         return Response(
             {
@@ -110,11 +111,32 @@ class ServiceRequestCreateView(APIView):
                 "request_type": service_request.request_type,
                 "estimate": service_request.estimate,
                 "preferred_date": service_request.preferred_date,
-                # Lets a guest attach this request to an account right away.
+                # Lets a guest attach this request to an account right away,
+                # and read its parts estimate while it's being generated.
                 "claim_token": claim_token,
+                "parts_estimate_status": "pending" if parts.wants_estimate(service_request) else None,
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class GuestPartsEstimateView(PublicAPIView):
+    """Read (never trigger) a guest request's parts estimate via its claim token."""
+
+    throttle_scope = "intake_parts"
+
+    def post(self, request):
+        token = str(request.data.get("claim_token") or "")
+        service_request = (
+            ServiceRequest.objects.select_related("parts_estimate")
+            .filter(claim_token_hash=hash_claim_token(token))
+            .first()
+            if token
+            else None
+        )
+        if service_request is None:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"parts_estimate": parts.as_payload(service_request)})
 
 
 # --- Customer ------------------------------------------------------------------
@@ -157,7 +179,7 @@ class MyRequestDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return ServiceRequest.objects.filter(customer=self.request.user).select_related(
-            "vehicle"
+            "vehicle", "parts_estimate"
         ).prefetch_related("messages__author")
 
     def retrieve(self, request, *args, **kwargs):
@@ -276,7 +298,9 @@ class StaffRequestDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAdminUser]
     serializer_class = StaffRequestSerializer
     http_method_names = ["get", "patch"]
-    queryset = ServiceRequest.objects.select_related("vehicle", "customer").prefetch_related(
+    queryset = ServiceRequest.objects.select_related(
+        "vehicle", "customer", "parts_estimate"
+    ).prefetch_related(
         "messages__author"
     )
 
@@ -291,6 +315,24 @@ class StaffRequestDetailView(generics.RetrieveUpdateAPIView):
         instance = serializer.save()
         if notify and (instance.status, instance.scheduled_for) != before:
             transaction.on_commit(lambda: notifications.notify_status_change(instance))
+
+
+class StaffPartsEstimateRetryView(APIView):
+    """Retry a parts estimate that couldn't be produced (still subject to the daily cap)."""
+
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, pk):
+        service_request = get_object_or_404(ServiceRequest, pk=pk)
+        if not parts.wants_estimate(service_request):
+            return Response(
+                {"detail": "Parts estimates are off, or this request has no parts to estimate."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if service_request.parts_estimate_status != ServiceRequest.PartsStatus.PENDING:
+            parts.schedule(service_request)
+        service_request.refresh_from_db()
+        return Response({"parts_estimate": parts.as_payload(service_request)})
 
 
 class StaffRequestMessageView(APIView):

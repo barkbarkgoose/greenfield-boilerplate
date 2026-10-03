@@ -51,6 +51,27 @@ class Vehicle(models.Model):
         return vehicle
 
 
+class PartsEstimate(models.Model):
+    """An AI parts estimate, cached per vehicle + set of jobs.
+
+    Requests for the same car and work reuse a recent row instead of calling
+    the model again; see apps/intake/parts.py.
+    """
+
+    key = models.CharField(max_length=64, unique=True)
+    vehicle = models.JSONField(default=dict)
+    services = models.JSONField(default=dict)
+    result = models.JSONField(default=dict)
+    model_name = models.CharField(max_length=64, blank=True)
+    generated_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-generated_at"]
+
+    def __str__(self) -> str:
+        return f"Parts estimate {self.key[:8]} ({self.generated_at:%Y-%m-%d})"
+
+
 def hash_claim_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -116,6 +137,19 @@ class ServiceRequest(models.Model):
     odometer = models.PositiveIntegerField(null=True, blank=True)
     final_total = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     internal_notes = models.TextField(blank=True, help_text="Private; never shown to the customer.")
+
+    class PartsStatus(models.TextChoices):
+        NONE = "", "Not requested"
+        PENDING = "pending", "Pending"
+        READY = "ready", "Ready"
+        UNAVAILABLE = "unavailable", "Unavailable"
+
+    parts_estimate = models.ForeignKey(
+        PartsEstimate, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    parts_estimate_status = models.CharField(
+        max_length=12, choices=PartsStatus.choices, blank=True, default=PartsStatus.NONE
+    )
 
     # Lets a guest attach this request to an account later. Only the hash is
     # stored; the raw token goes to the submitter (screen + email) once.

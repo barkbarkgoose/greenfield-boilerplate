@@ -8,6 +8,11 @@ public_urlpatterns = [
     path("catalog/", views.CatalogView.as_view(), name="intake-catalog"),
     path("estimate/", views.EstimateView.as_view(), name="intake-estimate"),
     path("requests/", views.ServiceRequestCreateView.as_view(), name="intake-request-create"),
+    path(
+        "requests/parts-estimate/",
+        views.GuestPartsEstimateView.as_view(),
+        name="intake-guest-parts-estimate",
+    ),
 ]
 
 garage_urlpatterns = [
@@ -27,6 +32,11 @@ staff_urlpatterns = [
     path("summary/", views.StaffSummaryView.as_view(), name="staff-summary"),
     path("requests/", views.StaffRequestListView.as_view(), name="staff-requests"),
     path("requests/<int:pk>/", views.StaffRequestDetailView.as_view(), name="staff-request"),
+    path(
+        "requests/<int:pk>/parts-estimate/",
+        views.StaffPartsEstimateRetryView.as_view(),
+        name="staff-request-parts-estimate",
+    ),
     path(
         "requests/<int:pk>/messages/",
         views.StaffRequestMessageView.as_view(),

@@ -5,11 +5,19 @@ import axios from 'axios'
 import PublicHeader from '@/components/PublicHeader.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import PartsEstimateCard from '@/components/PartsEstimateCard.vue'
+import { usePartsEstimate } from '@/composables/usePartsEstimate'
 import { useAuthStore } from '@/stores/auth'
-import { fetchMyVehicles } from '@/services/garage'
+import { fetchMyRequest, fetchMyVehicles } from '@/services/garage'
 import type { Vehicle } from '@/types/garage'
 import { business } from '@/config/business'
-import { decodeVin, fetchCatalog, fetchEstimate, submitServiceRequest } from '@/services/intake'
+import {
+  decodeVin,
+  fetchCatalog,
+  fetchEstimate,
+  fetchGuestPartsEstimate,
+  submitServiceRequest
+} from '@/services/intake'
 import { VIN_PATTERN, formatMoney, isoDateFromToday, normalizeVin } from '@/utils/intake'
 import type {
   Catalog,
@@ -163,6 +171,15 @@ const errors = ref<Record<string, string>>({})
 const generalError = ref('')
 const submitted = ref<ServiceRequestCreated | null>(null)
 
+// Parts are estimated server-side after booking; poll until ready.
+const partsEstimate = usePartsEstimate(async () => {
+  const created = submitted.value
+  if (!created) return null
+  if (created.claim_token) return fetchGuestPartsEstimate(created.claim_token)
+  return (await fetchMyRequest(created.id)).parts_estimate
+})
+const submittedVehicle = ref('')
+
 function flattenErrors(data: unknown): Record<string, string> {
   if (!data || typeof data !== 'object') return {}
   const result: Record<string, string> = {}
@@ -227,6 +244,8 @@ async function handleSubmit() {
       website: form.website,
       captcha_token: captchaToken.value
     })
+    submittedVehicle.value = [form.vehicle_year, form.vehicle_make, form.vehicle_model].filter(Boolean).join(' ')
+    if (submitted.value.parts_estimate_status === 'pending') partsEstimate.start({ status: 'pending' })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 400) {
@@ -247,6 +266,8 @@ async function handleSubmit() {
 
 function startOver() {
   submitted.value = null
+  partsEstimate.stop()
+  partsEstimate.estimate.value = null
   for (const key of Object.keys(selected)) delete selected[key]
   Object.assign(form, {
     vin: '',
@@ -320,6 +341,13 @@ const labelClass = 'block text-sm font-medium text-slate-700'
           <span class="text-xl font-bold text-slate-900">{{ formatMoney(submitted.estimate.total) }}</span>
           <span class="block text-xs text-slate-500">Plus parts. Final price confirmed before any work starts.</span>
         </p>
+        <div v-if="partsEstimate.estimate.value" class="mt-4 rounded-2xl bg-white p-4 text-left ring-1 ring-slate-200">
+          <PartsEstimateCard
+            :estimate="partsEstimate.estimate.value"
+            :labor-total="'total' in submitted.estimate ? submitted.estimate.total : null"
+            :vehicle-label="submittedVehicle"
+          />
+        </div>
         <div v-if="submitted.claim_token" class="mt-6 rounded-2xl bg-amber-50 p-5 text-left ring-1 ring-amber-200">
           <p class="font-semibold text-slate-900">Save this to your garage</p>
           <p class="mt-1 text-sm text-slate-700">

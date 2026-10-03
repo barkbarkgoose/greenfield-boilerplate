@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import EstimateBreakdown from '@/components/EstimateBreakdown.vue'
 import MessageThread from '@/components/MessageThread.vue'
+import PartsEstimateCard from '@/components/PartsEstimateCard.vue'
+import { usePartsEstimate } from '@/composables/usePartsEstimate'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { fetchMyRequest, sendCustomerMessage } from '@/services/garage'
 import type { RequestDetail } from '@/types/garage'
@@ -16,6 +18,8 @@ const loadError = ref(false)
 const estimate = computed(() =>
   request.value && 'total' in request.value.estimate ? (request.value.estimate as Estimate) : null
 )
+const parts = usePartsEstimate(async () => (await fetchMyRequest(route.params.id as string)).parts_estimate)
+
 const vehicleLabel = computed(() => request.value?.vehicle?.label || request.value?.vehicle_label || '')
 
 async function send(body: string) {
@@ -27,6 +31,7 @@ async function send(body: string) {
 onMounted(async () => {
   try {
     request.value = await fetchMyRequest(route.params.id as string)
+    parts.start(request.value.parts_estimate)
   } catch {
     loadError.value = true
   }
@@ -107,7 +112,16 @@ onMounted(async () => {
               :estimate="estimate"
               :total-label="request.final_total ? 'Original estimate' : 'Estimated total'"
             />
-            <p v-if="!request.final_total" class="mt-2 text-xs text-slate-500">Labor only; parts quoted separately.</p>
+            <p v-if="!request.final_total && !parts.estimate.value" class="mt-2 text-xs text-slate-500">Labor only; parts quoted separately.</p>
+          </section>
+
+          <section v-if="parts.estimate.value && !request.final_total" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <h2 class="mb-3 font-semibold text-slate-900">Parts estimate</h2>
+            <PartsEstimateCard
+              :estimate="parts.estimate.value"
+              :labor-total="estimate?.total ?? null"
+              :vehicle-label="vehicleLabel"
+            />
           </section>
         </aside>
       </div>

@@ -144,6 +144,7 @@ uv run --with-requirements requirements.txt python -m pytest
 | `/api/v1/intake/catalog/` | GET | No | Services, prices, bundles, booking policy |
 | `/api/v1/intake/estimate/` | POST | No | Price a set of services for a date |
 | `/api/v1/intake/requests/` | POST | Optional | Submit a booking or contact request (10/hour per IP) |
+| `/api/v1/intake/requests/parts-estimate/` | POST | Claim token | Read a guest request's parts estimate |
 | `/api/v1/garage/vehicles/` | GET | Yes | Customer's vehicles with repair history |
 | `/api/v1/garage/vehicles/<id>/` | PATCH | Yes | Rename a vehicle (nickname) |
 | `/api/v1/garage/requests/` | GET | Yes | Customer's requests |
@@ -153,6 +154,7 @@ uv run --with-requirements requirements.txt python -m pytest
 | `/api/v1/manage/summary/` | GET | Staff | Dashboard counts and upcoming appointments |
 | `/api/v1/manage/requests/` | GET | Staff | All requests; `status`, `q`, `unread`, `emergency`, `ordering`, `page` |
 | `/api/v1/manage/requests/<id>/` | GET/PATCH | Staff | Request detail / update status, appointment, notes |
+| `/api/v1/manage/requests/<id>/parts-estimate/` | POST | Staff | Retry a failed parts estimate |
 | `/api/v1/manage/requests/<id>/messages/` | POST | Staff | Reply to the customer (emails them) |
 
 ## Mobile Mechanic Site
@@ -187,7 +189,34 @@ the top (target rate, insurance reserve, drive time, emergency fee, lead time) a
 service's labor hours; the site and stored quotes follow. With the defaults, labor bills at
 $55/hr ($50 target + $5 insurance), each visit adds a $45 service call fee for drive time,
 jobs within 7 days add a $75 emergency fee, and pads/rotors/suspension on the same axle are
-discounted by the labor hours they share. Estimates are labor only.
+discounted by the labor hours they share. On top of that:
+
+- **Free add-ons:** oil change and air filter labor is free when the rest of the visit is
+  2+ hours (`FREE_ADDON_KEYS`, `FREE_ADDON_MIN_HOURS`).
+- **Big-job rate:** once labor (after bundles, before fees) passes $200, further labor bills
+  at $25/hr (`VOLUME_THRESHOLD`, `VOLUME_RATE`).
+
+Labor estimates exclude parts; see AI parts estimates below.
+
+### AI parts estimates
+
+With `ANTHROPIC_API_KEY` set (keychain), each booking gets a parts estimate from Claude:
+typical retail price ranges (economy to premium) for the parts each job needs on that
+vehicle. Customers see it on the confirmation screen and their request page alongside an
+all-in range; the mechanic sees the same estimate with a retry button if it failed.
+Without a key the feature is off and nothing changes.
+
+How it's locked down (details in `backend/apps/intake/parts.py`):
+
+- No endpoint triggers a model call. Estimates are generated server-side, on a background
+  thread, once per saved booking, which guests can only create after the captcha and the
+  per-IP limit. The read endpoints only read.
+- Only structured data is sent: VIN-decoded vehicle attributes (sanitized, 40 characters
+  max) and catalog service keys. Customer notes and "other work" text are never sent.
+- Output must match a JSON schema and is re-validated: unknown jobs dropped, prices and
+  quantities clamped, text truncated. Totals are computed by the server.
+- Results are cached per vehicle + jobs for 30 days, and `PARTS_ESTIMATE_DAILY_LIMIT`
+  (default 50) caps new model calls per rolling 24 hours.
 
 ### Email
 
