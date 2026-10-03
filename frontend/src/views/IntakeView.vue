@@ -10,7 +10,7 @@ import { usePartsEstimate } from '@/composables/usePartsEstimate'
 import { useAuthStore } from '@/stores/auth'
 import { fetchMyRequest, fetchMyVehicles } from '@/services/garage'
 import type { Vehicle } from '@/types/garage'
-import { business } from '@/config/business'
+import { business, partsPolicy } from '@/config/business'
 import {
   decodeVin,
   fetchCatalog,
@@ -339,7 +339,7 @@ const labelClass = 'block text-sm font-medium text-slate-700'
         >
           Estimated labor &amp; fees:
           <span class="text-xl font-bold text-slate-900">{{ formatMoney(submitted.estimate.total) }}</span>
-          <span class="block text-xs text-slate-500">Plus parts. Final price confirmed before any work starts.</span>
+          <span class="block text-xs text-slate-500">Plus parts at cost, zero markup. Final price confirmed before any work starts.</span>
         </p>
         <div v-if="partsEstimate.estimate.value" class="mt-4 rounded-2xl bg-white p-4 text-left ring-1 ring-slate-200">
           <PartsEstimateCard
@@ -636,7 +636,7 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                     v-model="form.notes"
                     :rows="mode === 'booking' ? 3 : 5"
                     maxlength="4000"
-                    :placeholder="mode === 'booking' ? 'Front or rear axle, symptoms, parking/access notes, best time to call…' : 'Describe what\'s going on with the car and the best way and time to reach you.'"
+                    :placeholder="mode === 'booking' ? 'Front or rear axle, symptoms, parts preferences (brand, OEM, budget), parking/access notes, best time to call…' : 'Describe what\'s going on with the car and the best way and time to reach you.'"
                     :class="[inputClass, errors.notes && 'border-red-400']"
                   />
                   <p v-if="errors.notes" data-error class="mt-1 text-sm text-red-600">{{ errors.notes }}</p>
@@ -686,7 +686,8 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                 <p v-else class="mt-3 text-sm text-slate-400">The estimate couldn't be calculated right now. You can still submit.</p>
 
                 <ul class="mt-5 space-y-2 border-t border-slate-700 pt-4 text-xs text-slate-400">
-                  <li>Parts are quoted separately after I look up your VIN.</li>
+                  <li>{{ partsPolicy.short }} Quoted after I look up your VIN.</li>
+                  <li>Want a specific brand, OEM, or the budget option? Say so in your notes.</li>
                   <li>Parts bought locally on short notice are likely to cost more than ordered parts.</li>
                   <li v-if="selected.other">"Other" work is quoted after I review it and may not be something I can cover.</li>
                 </ul>

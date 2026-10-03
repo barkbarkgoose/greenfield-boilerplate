@@ -93,6 +93,7 @@ class TestSubmissionAndEmail:
         assert customer_mail.to == ["pat@example.com"]
         assert f"https://shop.example/claim/{token}" in customer_mail.body
         assert "Estimated total" in customer_mail.body
+        assert "zero markup" in customer_mail.body
 
     def test_emergency_flag_in_owner_subject(self, django_capture_on_commit_callbacks):
         submit(

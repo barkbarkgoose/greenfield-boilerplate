@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import PublicHeader from '@/components/PublicHeader.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
-import { business } from '@/config/business'
+import { business, partsPolicy } from '@/config/business'
 import { fetchCatalog } from '@/services/intake'
 import { formatMoney } from '@/utils/intake'
 import type { Catalog } from '@/types/intake'
@@ -20,8 +20,8 @@ const steps = [
     body: 'Pick from the menu below and see your labor estimate right away. Your VIN lets me order exactly the right parts.'
   },
   {
-    title: 'I order parts ahead',
-    body: 'Jobs are booked about two weeks out so parts arrive at normal prices instead of retail counter prices.'
+    title: 'I order parts ahead, at cost',
+    body: 'Jobs are booked about two weeks out so I can find the best price on your parts. You pay exactly what I pay, with zero markup.'
   },
   {
     title: 'I come to you',
@@ -74,6 +74,10 @@ onMounted(async () => {
           </div>
         </div>
         <ul class="grid gap-3 text-sm">
+          <li class="rounded-2xl border border-amber-400/40 bg-slate-800/60 p-4">
+            <p class="font-semibold text-amber-400">{{ partsPolicy.headline }}</p>
+            <p class="mt-1 text-slate-400">You pay exactly what I pay for parts, nothing more.</p>
+          </li>
           <li class="rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
             <p class="font-semibold text-white">Flat labor pricing</p>
             <p class="mt-1 text-slate-400">Every job is priced by the time it really takes.</p>
@@ -110,7 +114,8 @@ onMounted(async () => {
         <div class="max-w-2xl">
           <h2 class="text-2xl font-bold text-slate-900 sm:text-3xl">Services &amp; labor prices</h2>
           <p class="mt-3 text-slate-600">
-            Prices are labor only. Parts are quoted separately once I look up your VIN.
+            Prices are labor only. Parts are quoted separately once I look up your VIN, and
+            billed at cost with zero markup.
             <template v-if="catalog">
               Each visit includes a {{ formatMoney(catalog.service_call_fee) }} service call fee
               that covers travel.
@@ -176,7 +181,11 @@ onMounted(async () => {
     <!-- Policies -->
     <section class="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
       <h2 class="text-2xl font-bold text-slate-900 sm:text-3xl">Good to know</h2>
-      <div class="mt-8 grid gap-4 md:grid-cols-3">
+      <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="rounded-2xl bg-emerald-50 p-6 ring-1 ring-emerald-200">
+          <h3 class="font-semibold text-emerald-900">{{ partsPolicy.headline }}, guaranteed</h3>
+          <p class="mt-2 text-sm text-emerald-900/80">{{ partsPolicy.long }}</p>
+        </div>
         <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <h3 class="font-semibold text-slate-900">Booking ~{{ leadDays }} days ahead</h3>
           <p class="mt-2 text-sm text-slate-600">

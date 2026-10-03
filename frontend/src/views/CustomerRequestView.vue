@@ -112,7 +112,7 @@ onMounted(async () => {
               :estimate="estimate"
               :total-label="request.final_total ? 'Original estimate' : 'Estimated total'"
             />
-            <p v-if="!request.final_total && !parts.estimate.value" class="mt-2 text-xs text-slate-500">Labor only; parts quoted separately.</p>
+            <p v-if="!request.final_total && !parts.estimate.value" class="mt-2 text-xs text-slate-500">Labor only; parts quoted separately at cost, zero markup.</p>
           </section>
 
           <section v-if="parts.estimate.value && !request.final_total" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">

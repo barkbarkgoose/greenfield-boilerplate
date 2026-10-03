@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { PartsEstimate } from '@/types/intake'
 import { formatDate, formatMoney } from '@/utils/intake'
+import { partsPolicy } from '@/config/business'
 
 const props = defineProps<{
   estimate: PartsEstimate
@@ -36,7 +37,7 @@ const confidenceLabel = computed(
     </div>
 
     <p v-else-if="estimate.status === 'unavailable'" class="text-sm text-slate-600">
-      Parts will be quoted after I look up your VIN.
+      Parts will be quoted after I look up your VIN. {{ partsPolicy.short }}
     </p>
 
     <template v-else>
@@ -69,7 +70,8 @@ const confidenceLabel = computed(
         <p v-if="estimate.assumptions" class="text-xs text-slate-500">Assumed: {{ estimate.assumptions }}</p>
       </div>
 
-      <p class="mt-3 text-xs text-slate-500">
+      <p class="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">{{ partsPolicy.long }}</p>
+      <p class="mt-2 text-xs text-slate-500">
         {{ confidenceLabel }}: an AI estimate of typical retail prices (economy to premium), not a quote.
         I'll confirm exact parts and prices before ordering. Parts bought locally on short notice usually cost more.
         <template v-if="estimate.generated_at"> Estimated {{ formatDate(estimate.generated_at) }}.</template>
