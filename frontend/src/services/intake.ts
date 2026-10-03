@@ -6,7 +6,8 @@ import type {
   PartsEstimate,
   ServiceRequestCreated,
   ServiceRequestPayload,
-  ServiceSelection
+  ServiceSelection,
+  VehicleType
 } from '@/types/intake'
 
 export async function fetchCatalog(): Promise<Catalog> {
@@ -16,11 +17,13 @@ export async function fetchCatalog(): Promise<Catalog> {
 
 export async function fetchEstimate(
   services: ServiceSelection[],
-  preferredDate: string | null
+  preferredDate: string | null,
+  vehicleType: VehicleType | '' = ''
 ): Promise<Estimate> {
   const { data } = await api.post<Estimate>('/api/v1/intake/estimate/', {
     services,
-    preferred_date: preferredDate || null
+    preferred_date: preferredDate || null,
+    vehicle_type: vehicleType
   })
   return data
 }

@@ -134,7 +134,7 @@ class TestSpanishRequests:
         assert customer.subject.startswith("Recibimos tu solicitud")
         assert "Hola Ana" in customer.body and "Pastillas de freno" in customer.body
         assert "?lang=es" in customer.body and "sin margen" in customer.body
-        assert "Cambio de aceite gratis con un trabajo de 2+ h" in customer.body
+        assert "Cambio de aceite y filtro gratis con un trabajo de 2+ h" in customer.body
 
         # Stored once, rendered per reader: the mechanic sees English.
         org = Organization.objects.create(name="o")

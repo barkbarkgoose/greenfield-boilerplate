@@ -185,7 +185,7 @@ class TestGarage:
         req.save()
         data = client_for(customer).get(f"/api/v1/garage/requests/{req.id}/").data
         assert "internal_notes" not in data
-        assert data["services"] == [{"key": "oil_change", "name": "Oil change", "quantity": 1}]
+        assert data["services"] == [{"key": "oil_change", "name": "Oil & filter change", "quantity": 1}]
 
     def test_nickname_is_the_only_editable_vehicle_field(self, customer, django_capture_on_commit_callbacks):
         submit(client_for(customer), django_capture_on_commit_callbacks)

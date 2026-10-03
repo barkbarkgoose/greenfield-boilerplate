@@ -25,7 +25,8 @@ import type {
   Estimate,
   RequestType,
   ServiceRequestCreated,
-  ServiceSelection
+  ServiceSelection,
+  VehicleType
 } from '@/types/intake'
 
 // Text keys follow the form's sections: intake-header__*, intake-vehicle__*,
@@ -55,6 +56,7 @@ const form = reactive({
   vehicle_year: '',
   vehicle_make: '',
   vehicle_model: '',
+  vehicle_type: '' as VehicleType | '',
   other_description: '',
   preferred_date: isoDateFromToday(14),
   notes: '',
@@ -132,8 +134,9 @@ let estimateTimer: ReturnType<typeof setTimeout> | undefined
 let estimateRequest = 0
 
 watch(
-  // Re-fetch on language change too: line item names come from the API.
-  [selections, () => form.preferred_date, mode, locale],
+  // Re-fetch on language change too: line item names come from the API. The
+  // vehicle type alone (no VIN needed) is enough to preview a parts estimate.
+  [selections, () => form.preferred_date, () => form.vehicle_type, mode, locale],
   () => {
     clearTimeout(estimateTimer)
     if (mode.value !== 'booking' || selections.value.length === 0) {
@@ -144,7 +147,7 @@ watch(
     estimateTimer = setTimeout(async () => {
       const requestId = ++estimateRequest
       try {
-        const result = await fetchEstimate(selections.value, form.preferred_date || null)
+        const result = await fetchEstimate(selections.value, form.preferred_date || null, form.vehicle_type)
         if (requestId === estimateRequest) estimate.value = result
       } catch {
         if (requestId === estimateRequest) estimate.value = null
@@ -243,6 +246,7 @@ async function handleSubmit() {
       vehicle_year: form.vehicle_year.trim(),
       vehicle_make: form.vehicle_make.trim(),
       vehicle_model: form.vehicle_model.trim(),
+      vehicle_type: form.vehicle_type,
       services: isBooking ? selections.value : [],
       other_description: isBooking && selected.other ? form.other_description.trim() : '',
       preferred_date: isBooking ? form.preferred_date : null,
@@ -280,6 +284,7 @@ function startOver() {
     vehicle_year: '',
     vehicle_make: '',
     vehicle_model: '',
+    vehicle_type: '',
     other_description: '',
     preferred_date: isoDateFromToday(14),
     notes: ''
@@ -496,6 +501,17 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                   <input id="vehicle_model" v-model="form.vehicle_model" type="text" maxlength="60" :class="inputClass" />
                 </div>
               </div>
+              <div v-if="mode === 'booking'" class="mt-4">
+                <label for="vehicle_type" :class="labelClass">
+                  {{ t('intake-vehicle__type-label') }}
+                  <span class="font-normal text-slate-500">{{ t('intake-form__optional') }}</span>
+                </label>
+                <select id="vehicle_type" v-model="form.vehicle_type" :class="[inputClass, 'bg-white']">
+                  <option value="">{{ t('intake-vehicle__type-placeholder') }}</option>
+                  <option v-for="type in catalog?.vehicle_types" :key="type.key" :value="type.key">{{ type.label }}</option>
+                </select>
+                <p class="mt-1 text-xs text-slate-500">{{ t('intake-vehicle__type-hint') }}</p>
+              </div>
             </fieldset>
 
             <!-- Services -->
@@ -528,7 +544,10 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                     />
                     <span class="flex-1">
                       <span class="flex items-baseline justify-between gap-3">
-                        <span class="font-medium text-slate-900">{{ service.name }}</span>
+                        <span class="font-medium text-slate-900">
+                          {{ service.name }}
+                          <span v-if="!service.quote_required" class="font-normal text-slate-500">{{ t('service__hours-estimate', { hours: service.labor_hours }) }}</span>
+                        </span>
                         <span class="whitespace-nowrap text-sm font-semibold text-slate-900">
                           <template v-if="service.quote_required">{{ t('landing-pricing__quoted') }}</template>
                           <template v-else>
@@ -537,6 +556,7 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                         </span>
                       </span>
                       <span class="mt-0.5 block text-sm text-slate-500">{{ service.description }}</span>
+                      <span v-if="service.free_addon" class="mt-0.5 block text-xs font-medium text-emerald-700">{{ t('intake-services__hint--free-addon') }}</span>
                     </span>
                   </label>
                   <div
@@ -681,12 +701,23 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                     </span>
                   </div>
                   <p class="mt-1 text-xs text-slate-400">{{ t('intake-estimate__labor-hours', { hours: estimate.labor_hours }) }}</p>
+
+                  <div v-if="estimate.parts_estimate" class="mt-4 rounded-2xl bg-white p-4 text-left ring-1 ring-slate-200">
+                    <PartsEstimateCard
+                      :estimate="estimate.parts_estimate"
+                      :labor-total="estimate.total"
+                      :vehicle-label="[form.vehicle_year, form.vehicle_make, form.vehicle_model].filter(Boolean).join(' ')"
+                    />
+                  </div>
                 </div>
                 <p v-else-if="estimating" class="mt-3 text-sm text-slate-400">{{ t('intake-estimate__calculating') }}</p>
                 <p v-else class="mt-3 text-sm text-slate-400">{{ t('intake-estimate__error') }}</p>
 
                 <ul class="mt-5 space-y-2 border-t border-slate-700 pt-4 text-xs text-slate-400">
-                  <li>{{ t('parts-policy__short') }} {{ t('intake-estimate__note--quoted-after-vin') }}</li>
+                  <li v-if="!estimate?.parts_estimate">
+                    {{ t('parts-policy__short') }}
+                    {{ form.vehicle_type ? t('intake-estimate__note--quoted-after-vin') : t('intake-estimate__note--pick-vehicle-type') }}
+                  </li>
                   <li>{{ t('intake-estimate__note--preferences') }}</li>
                   <li>{{ t('intake-estimate__note--short-notice') }}</li>
                   <li v-if="selected.other">{{ t('intake-estimate__note--other') }}</li>

@@ -66,7 +66,15 @@ class TestClassify:
             ({"make": "CHEVROLET", "body": "Sport Utility Vehicle (SUV)/Multi-Purpose Vehicle (MPV)", "gvwr": "Class 2E: 6,001 - 7,000 lb"}, "suv"),
             ({"make": "HONDA", "body": "Minivan"}, "suv"),
             ({"make": "TOYOTA", "body": "Hatchback/Liftback/Notchback"}, "sedan"),
+            # No body class (e.g. a failed NHTSA call): mixed-lineup makes stay unknown...
             ({"make": "TOYOTA"}, ""),
+            ({"make": "FORD"}, ""),
+            # ...but a handful of makes with an unambiguous lineup get a fallback default.
+            ({"make": "RAM"}, "truck"),
+            ({"make": "JEEP"}, "suv"),
+            ({"make": "BUICK"}, "crossover"),
+            # European still wins even with no body class at all.
+            ({"make": "BMW"}, "european"),
         ],
     )
     def test_vehicle_types(self, profile, expected):
@@ -104,6 +112,41 @@ class TestEstimate:
 
 
 @pytest.mark.django_db
+class TestLivePreview:
+    """The /estimate/ preview: a parts range from the chosen vehicle class alone, no VIN."""
+
+    def estimate(self, **body):
+        body.setdefault("services", [{"key": "brake_pads", "quantity": 2}, {"key": "oil_change"}])
+        return APIClient().post("/api/v1/intake/estimate/", body, format="json")
+
+    def test_no_vehicle_type_means_no_parts_preview(self):
+        add("brake_pads", "sedan", "40")
+        response = self.estimate()
+        assert response.status_code == 200
+        assert "parts_estimate" not in response.data
+
+    def test_vehicle_type_alone_is_enough(self):
+        add("brake_pads", "sedan", "40")
+        add("brake_pads", "sedan", "60")
+        add("oil_change", "sedan", "35")
+        response = self.estimate(vehicle_type="sedan")
+        estimate = response.data["parts_estimate"]
+        assert estimate["status"] == "ready" and estimate["vehicle_type"] == "sedan"
+        # Pads x2 axles (80-120) + oil (35), no VIN or make involved.
+        assert (estimate["low"], estimate["typical"], estimate["high"]) == ("115", "135", "155")
+
+    def test_unavailable_when_nothing_matches(self):
+        add("alternator", "truck", "200")
+        response = self.estimate(vehicle_type="sedan")
+        estimate = response.data["parts_estimate"]
+        assert estimate["status"] == "unavailable"
+        assert set(estimate["missing"]) == {"Brake pads", "Oil & filter change"}
+
+    def test_rejects_unknown_vehicle_type(self):
+        assert self.estimate(vehicle_type="spaceship").status_code == 400
+
+
+@pytest.mark.django_db
 class TestRequests:
     def test_off_until_the_table_has_data(self, django_capture_on_commit_callbacks):
         response = submit(django_capture_on_commit_callbacks)
@@ -127,6 +170,16 @@ class TestRequests:
         assert (estimate["low"], estimate["typical"], estimate["high"]) == ("115", "135", "155")
         assert estimate["vehicle_summary"] == "2003 Honda Accord"
         assert ServiceRequest.objects.get().vehicle_type == "sedan"
+
+    def test_customers_own_vehicle_type_choice_wins_over_the_vin_decode(
+        self, django_capture_on_commit_callbacks
+    ):
+        add("brake_pads", "crossover", "70")
+        # The module-level fixture mocks the VIN decode to a sedan; the customer
+        # picked crossover on the form before ever typing a VIN. Their answer sticks.
+        response = submit(django_capture_on_commit_callbacks, vehicle_type="crossover")
+        assert response.data["parts_estimate_status"] == "pending"
+        assert ServiceRequest.objects.get().vehicle_type == "crossover"
 
     def test_guest_poll_rejects_bad_token(self):
         r = APIClient().post("/api/v1/intake/requests/parts-estimate/", {"claim_token": "nope"}, format="json")

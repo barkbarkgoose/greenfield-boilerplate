@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from . import parts, pricing
 from .i18n import current_language, t
-from .models import RequestMessage, ServiceRequest, Vehicle
+from .models import RequestMessage, ServiceRequest, Vehicle, VehicleType
 
 # 17 characters, digits and capital letters except I, O and Q (ISO 3779).
 VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
@@ -52,6 +52,11 @@ def _validate_preferred_date(value):
 class EstimateSerializer(serializers.Serializer):
     services = ServiceItemSerializer(many=True, allow_empty=True)
     preferred_date = serializers.DateField(required=False, allow_null=True)
+    # Optional: the customer's own guess at their vehicle class, so the parts
+    # estimate preview doesn't need a VIN decode before submission.
+    vehicle_type = serializers.ChoiceField(
+        choices=VehicleType.choices, required=False, allow_blank=True, default=""
+    )
 
     validate_services = staticmethod(_validate_services)
     validate_preferred_date = staticmethod(_validate_preferred_date)
@@ -78,6 +83,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             "vehicle_year",
             "vehicle_make",
             "vehicle_model",
+            "vehicle_type",
             "services",
             "other_description",
             "preferred_date",

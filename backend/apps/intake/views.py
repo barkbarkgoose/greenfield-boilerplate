@@ -20,7 +20,7 @@ from . import notifications, parts, pricing
 from .authentication import OptionalJWTAuthentication
 from .captcha import check_human
 from .i18n import t
-from .models import RequestMessage, ServiceRequest, Vehicle, hash_claim_token
+from .models import RequestMessage, ServiceRequest, Vehicle, VehicleType, hash_claim_token
 from .serializers import (
     CustomerRequestSerializer,
     EstimateSerializer,
@@ -59,7 +59,13 @@ class PublicAPIView(APIView):
 
 class CatalogView(PublicAPIView):
     def get(self, request):
-        return Response(pricing.catalog())
+        data = pricing.catalog()
+        # Lets the booking form offer a parts estimate before the VIN is decoded:
+        # the customer picks their own vehicle class instead of waiting on a VIN.
+        data["vehicle_types"] = [
+            {"key": value, "label": parts.vehicle_type_label(value)} for value in VehicleType.values
+        ]
+        return Response(data)
 
 
 class EstimateView(PublicAPIView):
@@ -69,13 +75,18 @@ class EstimateView(PublicAPIView):
         serializer = EstimateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         quantities = pricing.normalize_quantities(serializer.validated_data["services"])
-        return Response(
-            pricing.estimate(
-                quantities,
-                serializer.validated_data.get("preferred_date"),
-                timezone.localdate(),
-            )
+        quote = pricing.estimate(
+            quantities,
+            serializer.validated_data.get("preferred_date"),
+            timezone.localdate(),
         )
+        vehicle_type = serializer.validated_data["vehicle_type"]
+        jobs = parts.jobs_for(quantities) if vehicle_type else {}
+        if jobs:
+            result = parts.estimate(jobs, vehicle_type, "")
+            result["status"] = "ready" if result["services"] else "unavailable"
+            quote["parts_estimate"] = parts.localize(result)
+        return Response(quote)
 
 
 class ServiceRequestCreateView(APIView):

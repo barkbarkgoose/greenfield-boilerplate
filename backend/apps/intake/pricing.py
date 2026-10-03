@@ -279,11 +279,12 @@ def catalog() -> dict:
                 "key": s.key,
                 "name": s.name,
                 "description": s.description,
-                "labor_hours": str(s.labor_hours),
+                "labor_hours": _hours(s.labor_hours),
                 "price": str(s.price),
                 "unit": s.unit,
                 "max_quantity": s.max_quantity,
                 "quote_required": s.quote_required,
+                "free_addon": s.key in FREE_ADDON_KEYS,
             }
             for s in SERVICES
         ],

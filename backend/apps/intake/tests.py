@@ -136,6 +136,11 @@ class TestIntakeAPI:
         assert "brake_pads" in keys and "other" in keys
         assert response.data["booking_lead_days"] == 14
 
+    def test_catalog_lists_vehicle_types(self, api_client):
+        response = api_client.get("/api/v1/intake/catalog/")
+        types = {t["key"]: t["label"] for t in response.data["vehicle_types"]}
+        assert types["sedan"] == "Sedan / car" and types["european"] == "European"
+
     def test_public_endpoints_ignore_stale_tokens(self, api_client):
         api_client.credentials(HTTP_AUTHORIZATION="Bearer not-a-real-token")
         assert api_client.get("/api/v1/intake/catalog/").status_code == 200

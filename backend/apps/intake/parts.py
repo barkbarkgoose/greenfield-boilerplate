@@ -15,7 +15,10 @@ model is involved: estimates are free, instant to compute, and every number
 traces back to a price you entered.
 
 The vehicle type comes from the NHTSA VIN decode (body class, weight class and
-make) and staff can correct it per request, which recalculates the estimate.
+make), or the customer's own pick on the booking form; if the decode fails
+outright, `MAKE_VEHICLE_TYPE_DEFAULTS` has a best-effort fallback for a
+handful of makes with an unambiguous lineup. Staff can correct it per request,
+which recalculates the estimate.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from decimal import Decimal
+from pathlib import Path
 
 from django.conf import settings
 from django.db import close_old_connections
@@ -49,6 +53,14 @@ EUROPEAN_MAKES = {
     "LAND ROVER", "MASERATI", "MERCEDES-BENZ", "MINI", "POLESTAR", "PORSCHE",
     "SAAB", "SMART", "VOLKSWAGEN", "VOLVO",
 }  # fmt: skip
+
+# Fallback only, used when the VIN decode has no body class (e.g. the NHTSA
+# call failed) but the make is known. Best-effort, not authoritative: a make
+# with a genuinely mixed lineup (Toyota sells sedans, crossovers, SUVs and
+# trucks) is left out on purpose rather than guessed at.
+MAKE_VEHICLE_TYPE_DEFAULTS: dict[str, str] = json.loads(
+    (Path(__file__).parent / "data" / "make_vehicle_type_defaults.json").read_text()
+)
 
 MAX_EXAMPLES_SHOWN = 8
 
@@ -109,11 +121,14 @@ def classify(profile: dict) -> str:
     NHTSA doesn't separate crossovers from SUVs, so SUVs are split by weight:
     GVWR class 1 (up to 6,000 lb) is a crossover, heavier is an SUV.
     """
-    if profile.get("make", "").upper() in EUROPEAN_MAKES:
+    make = profile.get("make", "").upper()
+    if make in EUROPEAN_MAKES:
         return VehicleType.EUROPEAN
     body = profile.get("body", "").lower()
     if not body:
-        return ""
+        # No VIN decode (e.g. the NHTSA call failed) to read a body class
+        # from; fall back to a make-only default where we have a confident one.
+        return MAKE_VEHICLE_TYPE_DEFAULTS.get(make, "")
     if "pickup" in body:
         return VehicleType.TRUCK
     if "sport utility" in body or "multi-purpose" in body or "crossover" in body:

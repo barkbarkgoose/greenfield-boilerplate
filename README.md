@@ -142,7 +142,7 @@ uv run --with-requirements requirements.txt python -m pytest
 | `/api/v1/auth/settings/` | GET | Yes | Read current user's settings |
 | `/api/v1/auth/settings/` | PATCH | Yes | Update current user's settings |
 | `/api/v1/intake/catalog/` | GET | No | Services, prices, bundles, booking policy |
-| `/api/v1/intake/estimate/` | POST | No | Price a set of services for a date |
+| `/api/v1/intake/estimate/` | POST | No | Price a set of services for a date; also returns a parts estimate if `vehicle_type` is given |
 | `/api/v1/intake/requests/` | POST | Optional | Submit a booking or contact request (10/hour per IP) |
 | `/api/v1/intake/requests/parts-estimate/` | POST | Claim token | Read a guest request's parts estimate |
 | `/api/v1/garage/vehicles/` | GET | Yes | Customer's vehicles with repair history |
@@ -207,11 +207,18 @@ the whole job otherwise (e.g. oil + filter).
 
 For each job on a booking, the estimate is the **min / median / max** of the best-matching
 examples: same make and type first, then same make, then same type. Jobs with no match are
-shown as "quoted separately". No AI model is involved. The vehicle type comes from the VIN
-decode (European make, then pickup / SUV / car body, with SUVs split from crossovers by
-weight class); you can change it on the request page, which recalculates the estimate.
-Customers see the result on the confirmation screen and their request page, with the
-zero-markup promise. Until the table has at least one row, the feature stays off.
+shown as "quoted separately". No AI model is involved.
+
+The customer can pick their own vehicle type on the booking form before submitting (no VIN
+needed) to preview a parts range alongside the labor estimate; that choice is also what gets
+saved, so the VIN decode at submission won't override it. If they leave it blank, the vehicle
+type comes from the VIN decode instead (European make, then pickup / SUV / car body, with
+SUVs split from crossovers by weight class) — and if that decode call itself fails,
+`apps/intake/data/make_vehicle_type_defaults.json` has a small best-effort fallback for a
+handful of makes with an unambiguous lineup (e.g. Ram is always a truck). You can change the
+vehicle type on the request page, which recalculates the estimate. Customers see the result
+on the confirmation screen and their request page, with the zero-markup promise. Until the
+table has at least one row, the feature stays off.
 
 Maintain the table in a spreadsheet and import it, or edit rows in the Django admin
 (`/admin/intake/partpriceexample/`):
@@ -228,6 +235,11 @@ Columns: `service`, `vehicle_type`, `price`, and optionally `vehicle_make`, `par
 `description`, `source`, `source_url`. Add as many rows per job as you like (several
 brands, several stores): more examples make better ranges. Rows without a price are skipped,
 and an import with any bad row imports nothing and lists what to fix.
+
+`apps/intake/data/part_prices_example.csv` has placeholder prices (two brands per job x
+vehicle type, so you get a real low/high range) to see the feature working end to end.
+Import it to try it out, then replace it with your own research:
+`uv run python manage.py import_part_prices apps/intake/data/part_prices_example.csv --replace`.
 
 ### Email
 

@@ -7,6 +7,7 @@ export interface CatalogService {
   unit: string | null
   max_quantity: number
   quote_required: boolean
+  free_addon: boolean
 }
 
 export interface CatalogBundle {
@@ -25,6 +26,7 @@ export interface Catalog {
   emergency_fee: string
   booking_lead_days: number
   emergency_window_days: number
+  vehicle_types: { key: VehicleType; label: string }[]
 }
 
 export interface ServiceSelection {
@@ -57,6 +59,7 @@ export interface Estimate {
     is_emergency: boolean
     short_notice: boolean
   }
+  parts_estimate?: PartsEstimate
 }
 
 export type RequestType = 'booking' | 'callback'
@@ -71,6 +74,7 @@ export interface ServiceRequestPayload {
   vehicle_year: string
   vehicle_make: string
   vehicle_model: string
+  vehicle_type: VehicleType | ''
   services: ServiceSelection[]
   other_description: string
   preferred_date: string | null
