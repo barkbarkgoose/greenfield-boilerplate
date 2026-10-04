@@ -7,7 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { createPasskey, deletePasskey, isPasskeyCancelled, listPasskeys } from '@/services/passkeys'
 import type { Passkey } from '@/services/passkeys'
-import { formatDate } from '@/utils/intake'
+import { formatDate } from '@/utils/format'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -61,17 +61,17 @@ onMounted(() => load().catch(() => (errorMessage.value = t('passkey-setup__error
 
 <template>
   <div class="passkey-manager">
-    <p class="text-sm text-slate-500">{{ required ? t('passkey-manager__intro--required') : t('passkey-manager__intro') }}</p>
-    <ul v-if="passkeys.length" class="mt-4 divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+    <p class="text-sm text-stone-500">{{ required ? t('passkey-manager__intro--required') : t('passkey-manager__intro') }}</p>
+    <ul v-if="passkeys.length" class="mt-4 divide-y divide-stone-100 rounded-xl ring-1 ring-stone-200">
       <li v-for="passkey in passkeys" :key="passkey.id" class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
         <span class="min-w-0">
-          <span class="block truncate font-medium text-slate-900">{{ passkey.name }}</span>
-          <span class="block text-xs text-slate-500">
+          <span class="block truncate font-medium text-stone-900">{{ passkey.name }}</span>
+          <span class="block text-xs text-stone-500">
             {{ t('passkey-manager__added', { date: formatDate(passkey.created_at) }) }}
             <template v-if="passkey.last_used_at"> · {{ t('passkey-manager__last-used', { date: formatDate(passkey.last_used_at) }) }}</template>
           </span>
         </span>
-        <button type="button" :disabled="busy" class="shrink-0 text-xs font-semibold text-slate-500 hover:text-red-700 disabled:opacity-50" @click="remove(passkey)">
+        <button type="button" :disabled="busy" class="shrink-0 text-xs font-semibold text-stone-500 hover:text-red-700 disabled:opacity-50" @click="remove(passkey)">
           {{ t('passkey-manager__remove') }}
         </button>
       </li>
@@ -84,9 +84,9 @@ onMounted(() => load().catch(() => (errorMessage.value = t('passkey-setup__error
         type="text"
         maxlength="60"
         :placeholder="t('passkey-manager__name-placeholder')"
-        class="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+        class="min-w-0 flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm focus:border-lime-500 focus:outline-none focus:ring-2 focus:ring-lime-400/40"
       />
-      <button type="submit" :disabled="busy" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
+      <button type="submit" :disabled="busy" class="rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-800 disabled:opacity-50">
         {{ t('passkey-manager__add') }}
       </button>
     </form>

@@ -1,66 +1,27 @@
 import api from '@/services/api'
-import type {
-  Catalog,
-  DecodedVehicle,
-  Estimate,
-  PartsEstimate,
-  ServiceRequestCreated,
-  ServiceRequestPayload,
-  ServiceSelection,
-  VehicleType
-} from '@/types/intake'
+import type { Catalog, Estimate, ItemSelection, OrderCreated, OrderPayload } from '@/types/intake'
 
 export async function fetchCatalog(): Promise<Catalog> {
   const { data } = await api.get<Catalog>('/api/v1/intake/catalog/')
   return data
 }
 
+// Coverage for the zip, routing and a price. Works with no items (just a
+// coverage check) and with no date (priced without checking trucks).
 export async function fetchEstimate(
-  services: ServiceSelection[],
-  preferredDate: string | null,
-  vehicleType: VehicleType | '' = ''
+  items: ItemSelection[],
+  zipCode: string,
+  preferredDate: string | null
 ): Promise<Estimate> {
   const { data } = await api.post<Estimate>('/api/v1/intake/estimate/', {
-    services,
-    preferred_date: preferredDate || null,
-    vehicle_type: vehicleType
+    items,
+    zip_code: zipCode,
+    preferred_date: preferredDate || null
   })
   return data
 }
 
-export async function submitServiceRequest(
-  payload: ServiceRequestPayload
-): Promise<ServiceRequestCreated> {
-  const { data } = await api.post<ServiceRequestCreated>('/api/v1/intake/requests/', payload)
+export async function submitOrder(payload: OrderPayload): Promise<OrderCreated> {
+  const { data } = await api.post<OrderCreated>('/api/v1/intake/orders/', payload)
   return data
-}
-
-// NHTSA's free vPIC decoder. Best-effort: the form never depends on it.
-export async function decodeVin(vin: string): Promise<DecodedVehicle | null> {
-  try {
-    const response = await fetch(
-      `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(vin)}?format=json`
-    )
-    if (!response.ok) return null
-    const body = await response.json()
-    const result = body?.Results?.[0]
-    if (!result?.Make) return null
-    return {
-      year: result.ModelYear || '',
-      make: result.Make || '',
-      model: result.Model || ''
-    }
-  } catch {
-    return null
-  }
-}
-
-// Read-only: a guest can see their own request's parts estimate with the
-// claim token from submission. This never triggers a new estimate.
-export async function fetchGuestPartsEstimate(claimToken: string): Promise<PartsEstimate | null> {
-  const { data } = await api.post<{ parts_estimate: PartsEstimate | null }>(
-    '/api/v1/intake/requests/parts-estimate/',
-    { claim_token: claimToken }
-  )
-  return data.parts_estimate
 }

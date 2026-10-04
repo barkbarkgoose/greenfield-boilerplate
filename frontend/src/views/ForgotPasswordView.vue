@@ -32,44 +32,44 @@ async function submit() {
 }
 
 const inputClass =
-  'mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40'
+  'mt-1 block w-full rounded-lg border border-stone-300 px-3 py-2.5 text-stone-900 shadow-sm focus:border-lime-500 focus:outline-none focus:ring-2 focus:ring-lime-400/40'
 </script>
 
 <template>
   <div class="auth-forgot flex flex-1 items-center justify-center px-4 py-12">
-    <div class="w-full max-w-md rounded-3xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
-      <h1 class="text-2xl font-bold text-slate-900">{{ t('auth-forgot__title') }}</h1>
+    <div class="w-full max-w-md rounded-3xl bg-white p-8 shadow-sm ring-1 ring-stone-200">
+      <h1 class="text-2xl font-bold text-stone-900">{{ t('auth-forgot__title') }}</h1>
 
       <template v-if="sentTo">
         <p class="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900 ring-1 ring-emerald-200" role="status">
           {{ t('auth-forgot__sent', { email: sentTo }) }}
         </p>
-        <p class="mt-4 text-sm text-slate-600">{{ t('auth-forgot__sent-hint') }}</p>
-        <button type="button" class="mt-4 text-sm font-semibold text-amber-700 hover:text-amber-600" @click="sentTo = ''">
+        <p class="mt-4 text-sm text-stone-600">{{ t('auth-forgot__sent-hint') }}</p>
+        <button type="button" class="mt-4 text-sm font-semibold text-lime-700 hover:text-lime-600" @click="sentTo = ''">
           {{ t('auth-forgot__try-again') }}
         </button>
       </template>
 
       <template v-else>
-        <p class="mt-2 text-sm text-slate-600">{{ t('auth-forgot__intro') }}</p>
+        <p class="mt-2 text-sm text-stone-600">{{ t('auth-forgot__intro') }}</p>
         <form class="mt-6 space-y-4" @submit.prevent="submit">
           <div>
-            <label for="email-address" class="block text-sm font-medium text-slate-700">{{ t('auth-login__email-label') }}</label>
+            <label for="email-address" class="block text-sm font-medium text-stone-700">{{ t('auth-login__email-label') }}</label>
             <input id="email-address" v-model="email" type="email" autocomplete="email" required :class="inputClass" />
           </div>
           <p v-if="errorMessage" class="rounded-lg bg-red-50 p-3 text-sm text-red-800">{{ errorMessage }}</p>
           <button
             type="submit"
             :disabled="sending"
-            class="w-full rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            class="w-full rounded-xl bg-stone-900 px-5 py-3 font-semibold text-white hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {{ sending ? t('auth-forgot__submit--loading') : t('auth-forgot__submit') }}
           </button>
         </form>
       </template>
 
-      <p class="mt-6 text-sm text-slate-600">
-        <router-link :to="{ name: 'login' }" class="font-semibold text-amber-700 hover:text-amber-600">← {{ t('auth-forgot__back-link') }}</router-link>
+      <p class="mt-6 text-sm text-stone-600">
+        <router-link :to="{ name: 'login' }" class="font-semibold text-lime-700 hover:text-lime-600">← {{ t('auth-forgot__back-link') }}</router-link>
       </p>
     </div>
   </div>

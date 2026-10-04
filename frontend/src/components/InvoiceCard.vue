@@ -1,24 +1,18 @@
 <script setup lang="ts">
-// A verified invoice: catalog jobs (priced like the estimate) plus the lines
-// the mechanic entered for parts at cost, shipping, extra labor and
-// adjustments. Used in the customer's garage and as the staff preview.
+// A verified invoice: what was delivered (material + per-load delivery,
+// priced like the order quote) plus the services, fees and adjustments staff
+// added. Used on the customer's order page and as the staff preview.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import EstimateBreakdown from '@/components/EstimateBreakdown.vue'
-import { INVOICE_LINE_KINDS } from '@/types/garage'
-import type { Invoice } from '@/types/garage'
-import { formatDate, formatMoney } from '@/utils/intake'
+import QuoteBreakdown from '@/components/QuoteBreakdown.vue'
+import { INVOICE_LINE_KINDS } from '@/types/account'
+import type { Invoice } from '@/types/account'
+import { formatDate, formatMoney } from '@/utils/format'
 
 const props = defineProps<{ invoice: Invoice; preview?: boolean }>()
 const { t } = useI18n()
 
-// "Other" work has no catalog price; it's billed as an extra labor line.
-const jobs = computed(() => ({
-  ...props.invoice.labor,
-  line_items: props.invoice.labor.line_items.filter((item) => !item.quote_required),
-  needs_custom_quote: false
-}))
-const hasJobs = computed(() => jobs.value.line_items.length > 0)
+const hasDelivered = computed(() => props.invoice.priced.line_items.length > 0 || props.invoice.priced.deliveries.length > 0)
 
 const groups = computed(() =>
   INVOICE_LINE_KINDS.map((kind) => ({
@@ -42,22 +36,22 @@ const updatedLater = computed(() => {
       </svg>
       {{ t('invoice-card__verified', { date: formatDate(invoice.published_at) }) }}
     </p>
-    <p v-if="updatedLater && !preview" class="mt-1 text-xs text-slate-500">
+    <p v-if="updatedLater && !preview" class="mt-1 text-xs text-stone-500">
       {{ t('invoice-card__updated', { date: formatDate(invoice.updated_at!) }) }}
     </p>
 
-    <div v-if="hasJobs" class="mt-4">
-      <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">{{ t('invoice-card__section--jobs') }}</h3>
-      <EstimateBreakdown class="mt-2" :estimate="jobs" :total-label="t('invoice-card__jobs-total')" />
+    <div v-if="hasDelivered" class="mt-4">
+      <h3 class="text-xs font-semibold uppercase tracking-wider text-stone-400">{{ t('invoice-card__section--delivered') }}</h3>
+      <QuoteBreakdown class="mt-2" :quote="invoice.priced" :total-label="t('invoice-card__delivered-total')" />
     </div>
 
     <div v-for="group in groups" :key="group.kind" class="mt-4">
-      <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">{{ t(`invoice-card__section--${group.kind}`) }}</h3>
+      <h3 class="text-xs font-semibold uppercase tracking-wider text-stone-400">{{ t(`invoice-card__section--${group.kind}`) }}</h3>
       <ul class="mt-2 space-y-1.5 text-sm">
-        <li v-for="(line, index) in group.lines" :key="index" class="flex justify-between gap-3 text-slate-600">
+        <li v-for="(line, index) in group.lines" :key="index" class="flex justify-between gap-3 text-stone-600">
           <span class="min-w-0 break-words">
             {{ line.description }}
-            <span v-if="line.quantity !== '1'" class="whitespace-nowrap text-slate-400">
+            <span v-if="line.quantity !== '1'" class="whitespace-nowrap text-stone-400">
               · {{ t('invoice-card__quantity', { quantity: line.quantity, price: formatMoney(line.unit_price) }) }}
             </span>
           </span>
@@ -68,12 +62,11 @@ const updatedLater = computed(() => {
       </ul>
     </div>
 
-    <p class="mt-4 flex items-baseline justify-between gap-3 border-t border-slate-200 pt-3 text-lg font-bold text-slate-900">
+    <p class="mt-4 flex items-baseline justify-between gap-3 border-t border-stone-200 pt-3 text-lg font-bold text-stone-900">
       <span>{{ t('invoice-card__total') }}</span>
       <span>{{ formatMoney(invoice.totals.total) }}</span>
     </p>
 
-    <p v-if="invoice.note" class="mt-3 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{{ invoice.note }}</p>
-    <p v-if="invoice.totals.parts !== '0.00'" class="mt-3 text-xs text-slate-500">{{ t('parts-policy__short') }}</p>
+    <p v-if="invoice.note" class="mt-3 whitespace-pre-wrap rounded-xl bg-stone-50 p-3 text-sm text-stone-700">{{ invoice.note }}</p>
   </div>
 </template>

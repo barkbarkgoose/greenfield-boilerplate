@@ -1,9 +1,9 @@
-// Keeps an unsubmitted booking form in the browser so a refresh, a trip to
+// Keeps an unsubmitted order form in the browser so a refresh, a trip to
 // another page, or closing the tab doesn't lose it. It lives in localStorage
 // on this device only, is dropped once the request is sent, and expires after
 // DRAFT_MAX_AGE_DAYS so an old half-filled form doesn't linger.
 
-export const DRAFT_KEY = 'intake-draft'
+export const DRAFT_KEY = 'order-draft'
 const DRAFT_VERSION = 1
 export const DRAFT_MAX_AGE_DAYS = 14
 
@@ -12,22 +12,19 @@ export const DRAFT_FIELDS = [
   'name',
   'phone',
   'email',
-  'service_address',
-  'vin',
-  'vehicle_year',
-  'vehicle_make',
-  'vehicle_model',
-  'vehicle_type',
-  'other_description',
+  'delivery_address',
+  'zip_code',
   'preferred_date',
+  'delivery_window',
+  'placement_notes',
   'notes'
 ] as const
 
 export type DraftField = (typeof DRAFT_FIELDS)[number]
 
-export interface IntakeDraft {
+export interface OrderDraft {
   form: Partial<Record<DraftField, string>>
-  // Service key -> quantity.
+  // Product key -> cubic yards.
   selected: Record<string, number>
 }
 
@@ -42,7 +39,7 @@ function defaultStorage(): DraftStorage | null {
   }
 }
 
-export function isEmptyDraft(draft: IntakeDraft, defaults: Partial<Record<DraftField, string>> = {}): boolean {
+export function isEmptyDraft(draft: OrderDraft, defaults: Partial<Record<DraftField, string>> = {}): boolean {
   const formTouched = DRAFT_FIELDS.some((field) => {
     const value = draft.form[field] ?? ''
     return value !== '' && value !== (defaults[field] ?? '')
@@ -50,7 +47,7 @@ export function isEmptyDraft(draft: IntakeDraft, defaults: Partial<Record<DraftF
   return !formTouched && Object.keys(draft.selected).length === 0
 }
 
-export function saveDraft(draft: IntakeDraft, storage = defaultStorage(), now = Date.now()): void {
+export function saveDraft(draft: OrderDraft, storage = defaultStorage(), now = Date.now()): void {
   if (!storage) return
   try {
     const form: Partial<Record<DraftField, string>> = {}
@@ -73,7 +70,7 @@ export function clearDraft(storage = defaultStorage()): void {
 }
 
 /** The saved draft, or null when there is none, it's expired or unreadable. */
-export function loadDraft(storage = defaultStorage(), now = Date.now()): IntakeDraft | null {
+export function loadDraft(storage = defaultStorage(), now = Date.now()): OrderDraft | null {
   if (!storage) return null
   let raw: unknown
   try {

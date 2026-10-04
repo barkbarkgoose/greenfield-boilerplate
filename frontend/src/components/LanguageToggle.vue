@@ -31,13 +31,13 @@ function select(target: Locale) {
 <template>
   <div
     class="language-toggle flex items-center gap-0.5 rounded-lg p-1"
-    :class="dark ? 'bg-white/10' : 'bg-slate-100'"
+    :class="dark ? 'bg-white/10' : 'bg-stone-100'"
     role="radiogroup"
     :aria-label="t('language-toggle__label')"
   >
     <svg
       class="ml-1 h-4 w-4 shrink-0"
-      :class="dark ? 'text-slate-400' : 'text-slate-500'"
+      :class="dark ? 'text-stone-400' : 'text-stone-500'"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -60,11 +60,11 @@ function select(target: Locale) {
       :class="
         locale === option
           ? dark
-            ? 'bg-slate-700 text-white'
-            : 'bg-white text-slate-900 shadow-sm'
+            ? 'bg-stone-700 text-white'
+            : 'bg-white text-stone-900 shadow-sm'
           : dark
-            ? 'text-slate-400 hover:text-white'
-            : 'text-slate-500 hover:text-slate-900'
+            ? 'text-stone-400 hover:text-white'
+            : 'text-stone-500 hover:text-stone-900'
       "
       @click="select(option)"
     >

@@ -28,7 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
   const passkeySetupRequired = computed(
     () => isAuthenticated.value && !!decodeJwtPayload(token.value!)?.psr
   )
-  // Where a signed-in person lands: the mechanic's dashboard or the customer's garage.
+  // Where a signed-in person lands: the staff dashboard or the customer's orders.
   const homeRoute = computed(() => (isStaff.value ? '/dashboard' : '/account'))
 
   function clearAuthState(): void {

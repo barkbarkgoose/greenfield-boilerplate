@@ -42,31 +42,31 @@ function logout() {
   <div class="settings-page px-4 py-10 sm:px-6">
     <div class="mx-auto max-w-3xl">
       <header class="mb-8">
-        <h1 class="text-3xl font-bold tracking-tight text-slate-950">{{ t('settings-page__title') }}</h1>
+        <h1 class="text-3xl font-bold tracking-tight text-stone-950">{{ t('settings-page__title') }}</h1>
       </header>
 
       <div class="grid gap-6">
-        <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <section class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
           <div class="flex items-center gap-4">
-            <span class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-xl font-bold text-white">
+            <span class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-stone-900 text-xl font-bold text-white">
               {{ initials }}
             </span>
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
-                <h2 class="truncate text-xl font-semibold text-slate-950">{{ user?.name || t('settings-page__profile-fallback') }}</h2>
-                <span v-if="user?.is_staff" class="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                <h2 class="truncate text-xl font-semibold text-stone-950">{{ user?.name || t('settings-page__profile-fallback') }}</h2>
+                <span v-if="user?.is_staff" class="shrink-0 rounded-full bg-lime-100 px-2.5 py-0.5 text-xs font-semibold text-lime-800">
                   {{ t('app-nav__badge--staff') }}
                 </span>
               </div>
-              <p class="truncate text-sm text-slate-500">{{ user?.email }}</p>
+              <p class="truncate text-sm text-stone-500">{{ user?.email }}</p>
             </div>
           </div>
-          <p class="mt-6 text-sm text-slate-500">{{ t('settings-page__profile-hint') }}</p>
+          <p class="mt-6 text-sm text-stone-500">{{ t('settings-page__profile-hint') }}</p>
         </section>
 
-        <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <h2 class="text-lg font-semibold text-slate-950">{{ t('settings-page__language-title') }}</h2>
-          <p class="mt-1 text-sm text-slate-500">{{ t('settings-page__language-hint') }}</p>
+        <section class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
+          <h2 class="text-lg font-semibold text-stone-950">{{ t('settings-page__language-title') }}</h2>
+          <p class="mt-1 text-sm text-stone-500">{{ t('settings-page__language-hint') }}</p>
           <div class="mt-4 flex flex-wrap gap-2" role="radiogroup" :aria-label="t('settings-page__language-title')">
             <button
               v-for="option in SUPPORTED_LOCALES"
@@ -76,7 +76,7 @@ function logout() {
               :aria-checked="locale === option"
               :lang="option"
               class="rounded-xl px-4 py-2 text-sm font-semibold ring-1"
-              :class="locale === option ? 'bg-slate-900 text-white ring-slate-900' : 'text-slate-700 ring-slate-300 hover:bg-slate-50'"
+              :class="locale === option ? 'bg-stone-900 text-white ring-stone-900' : 'text-stone-700 ring-stone-300 hover:bg-stone-50'"
               @click="chooseLanguage(option)"
             >
               {{ t(`language-toggle__option--${option}`) }}
@@ -84,13 +84,13 @@ function logout() {
           </div>
         </section>
 
-        <section v-if="user?.passkey_required || user?.is_staff" class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <h2 class="text-lg font-semibold text-slate-950">{{ t('passkey-manager__title') }}</h2>
+        <section v-if="user?.passkey_required || user?.is_staff" class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
+          <h2 class="text-lg font-semibold text-stone-950">{{ t('passkey-manager__title') }}</h2>
           <PasskeyManager class="mt-1" />
         </section>
 
-        <section class="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <p class="text-sm text-slate-600">{{ t('settings-page__logout-hint') }}</p>
+        <section class="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
+          <p class="text-sm text-stone-600">{{ t('settings-page__logout-hint') }}</p>
           <button type="button" class="rounded-xl px-4 py-2 text-sm font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-50" @click="logout">
             {{ t('app-nav__menu-item--logout') }}
           </button>

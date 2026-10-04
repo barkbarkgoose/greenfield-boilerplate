@@ -1,5 +1,5 @@
 import { onBeforeUnmount, onMounted } from 'vue'
-import type { RequestMessage, RequestUpdates } from '@/types/garage'
+import type { OrderMessage, OrderUpdates } from '@/types/account'
 
 // How often an open request page checks for new messages and changes. Polling
 // keeps this simple on a plain Django server; docs/realtime-messaging.md covers
@@ -8,14 +8,14 @@ export const POLL_INTERVAL_MS = 10_000
 const MAX_BACKOFF_MS = 120_000
 
 /** Append messages that aren't already in the thread, oldest first. */
-export function mergeMessages(existing: RequestMessage[], incoming: RequestMessage[]): RequestMessage[] {
+export function mergeMessages(existing: OrderMessage[], incoming: OrderMessage[]): OrderMessage[] {
   const known = new Set(existing.map((message) => message.id))
   const added = incoming.filter((message) => !known.has(message.id))
   if (added.length === 0) return existing
   return [...existing, ...added].sort((a, b) => a.id - b.id)
 }
 
-export function lastMessageId(messages: RequestMessage[]): number {
+export function lastMessageId(messages: OrderMessage[]): number {
   return messages.reduce((max, message) => Math.max(max, message.id), 0)
 }
 
@@ -25,9 +25,9 @@ export function lastMessageId(messages: RequestMessage[]): number {
  * appointment, invoice...) so the page can reload it.
  */
 export function useLiveUpdates(options: {
-  poll: (afterId: number) => Promise<RequestUpdates>
-  messages: () => RequestMessage[] | undefined
-  onMessages: (messages: RequestMessage[]) => void
+  poll: (afterId: number) => Promise<OrderUpdates>
+  messages: () => OrderMessage[] | undefined
+  onMessages: (messages: OrderMessage[]) => void
   onChanged: () => void | Promise<void>
 }) {
   let timer: ReturnType<typeof setTimeout> | undefined

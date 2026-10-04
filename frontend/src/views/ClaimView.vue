@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { claimRequest } from '@/services/garage'
+import { claimOrder } from '@/services/account'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -11,8 +11,8 @@ const failed = ref(false)
 
 onMounted(async () => {
   try {
-    const { id } = await claimRequest(route.params.token as string)
-    router.replace({ name: 'account-request', params: { id } })
+    const { id } = await claimOrder(route.params.token as string)
+    router.replace({ name: 'account-order', params: { id } })
   } catch {
     failed.value = true
   }
@@ -22,10 +22,10 @@ onMounted(async () => {
 <template>
   <div class="mx-auto max-w-md px-4 py-16 text-center">
     <template v-if="failed">
-      <h1 class="text-xl font-bold text-slate-900">{{ t('claim-page__error-title') }}</h1>
-      <p class="mt-2 text-slate-600">{{ t('claim-page__error-body') }}</p>
-      <router-link to="/account" class="mt-6 inline-block rounded-xl bg-slate-900 px-5 py-2.5 font-semibold text-white">{{ t('claim-page__garage-link') }}</router-link>
+      <h1 class="text-xl font-bold text-stone-900">{{ t('claim-page__error-title') }}</h1>
+      <p class="mt-2 text-stone-600">{{ t('claim-page__error-body') }}</p>
+      <router-link to="/account" class="mt-6 inline-block rounded-xl bg-stone-900 px-5 py-2.5 font-semibold text-white">{{ t('claim-page__orders-link') }}</router-link>
     </template>
-    <p v-else class="text-slate-500">{{ t('claim-page__pending') }}</p>
+    <p v-else class="text-stone-500">{{ t('claim-page__pending') }}</p>
   </div>
 </template>

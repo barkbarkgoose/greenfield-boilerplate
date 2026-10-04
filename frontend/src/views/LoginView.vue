@@ -62,31 +62,31 @@ async function handleSubmit() {
 }
 
 const inputClass =
-  'mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40'
+  'mt-1 block w-full rounded-lg border border-stone-300 px-3 py-2.5 text-stone-900 shadow-sm focus:border-lime-500 focus:outline-none focus:ring-2 focus:ring-lime-400/40'
 </script>
 
 <template>
   <div class="flex flex-1 flex-col">
     <div class="flex flex-1 items-center justify-center px-4 py-12">
-      <div class="w-full max-w-md rounded-3xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
-        <h1 class="text-2xl font-bold text-slate-900">{{ t('auth-login__title') }}</h1>
-        <p class="mt-2 text-sm text-slate-600">
+      <div class="w-full max-w-md rounded-3xl bg-white p-8 shadow-sm ring-1 ring-stone-200">
+        <h1 class="text-2xl font-bold text-stone-900">{{ t('auth-login__title') }}</h1>
+        <p class="mt-2 text-sm text-stone-600">
           {{ isClaim ? t('auth-login__intro--claim') : t('auth-login__intro') }}
           {{ t('auth-login__register-prompt') }}
-          <router-link :to="{ name: 'register', query: route.query }" class="font-semibold text-amber-700 hover:text-amber-600">
+          <router-link :to="{ name: 'register', query: route.query }" class="font-semibold text-lime-700 hover:text-lime-600">
             {{ t('auth-login__register-link') }}
           </router-link>
         </p>
 
         <form class="mt-6 space-y-4" @submit.prevent="handleSubmit">
           <div>
-            <label for="email-address" class="block text-sm font-medium text-slate-700">{{ t('auth-login__email-label') }}</label>
+            <label for="email-address" class="block text-sm font-medium text-stone-700">{{ t('auth-login__email-label') }}</label>
             <input id="email-address" v-model="email" type="email" autocomplete="email" required :class="inputClass" />
           </div>
           <div>
             <div class="flex items-baseline justify-between gap-3">
-              <label for="password" class="block text-sm font-medium text-slate-700">{{ t('auth-login__password-label') }}</label>
-              <router-link :to="{ name: 'forgot-password', query: email ? { email } : {} }" class="text-sm font-medium text-amber-700 hover:text-amber-600">
+              <label for="password" class="block text-sm font-medium text-stone-700">{{ t('auth-login__password-label') }}</label>
+              <router-link :to="{ name: 'forgot-password', query: email ? { email } : {} }" class="text-sm font-medium text-lime-700 hover:text-lime-600">
                 {{ t('auth-login__forgot-link') }}
               </router-link>
             </div>
@@ -98,7 +98,7 @@ const inputClass =
           <button
             type="submit"
             :disabled="isLoading"
-            class="w-full rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            class="w-full rounded-xl bg-stone-900 px-5 py-3 font-semibold text-white hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {{ waitingForPasskey ? t('auth-login__submit--passkey') : isLoading ? t('auth-login__submit--loading') : t('auth-login__submit') }}
           </button>

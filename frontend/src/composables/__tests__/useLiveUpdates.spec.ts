@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { lastMessageId, mergeMessages } from '@/composables/useLiveUpdates'
-import type { RequestMessage } from '@/types/garage'
+import type { OrderMessage } from '@/types/account'
 
-function message(id: number): RequestMessage {
-  return { id, body: `#${id}`, from_staff: true, author_name: 'Mechanic', created_at: '2026-10-03T12:00:00Z' }
+function message(id: number): OrderMessage {
+  return { id, body: `#${id}`, from_staff: true, author_name: 'Staff', created_at: '2026-10-03T12:00:00Z' }
 }
 
 describe('live updates', () => {

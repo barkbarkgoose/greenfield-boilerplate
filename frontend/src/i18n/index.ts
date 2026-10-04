@@ -1,6 +1,6 @@
 // Site translations. Text lives in ./locales/en.json and ./locales/es.json as
 // flat BEM-style keys (block__element--modifier) named after where the text
-// appears, e.g. `intake-vehicle__vin-label`. See the README's "Translations".
+// appears, e.g. `order-location__zip-label`. See the README's "Translations".
 import { createI18n } from 'vue-i18n'
 import en from './locales/en.json'
 import es from './locales/es.json'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DRAFT_KEY, DRAFT_MAX_AGE_DAYS, clearDraft, isEmptyDraft, loadDraft, saveDraft } from '@/utils/intakeDraft'
+import { DRAFT_KEY, DRAFT_MAX_AGE_DAYS, clearDraft, isEmptyDraft, loadDraft, saveDraft } from '@/utils/orderDraft'
 
 function memoryStorage() {
   const data = new Map<string, string>()
@@ -14,13 +14,13 @@ function memoryStorage() {
 const NOW = Date.UTC(2026, 9, 3)
 const DAY = 86_400_000
 
-describe('intake draft', () => {
-  it('round-trips the form and selected services', () => {
+describe('order draft', () => {
+  it('round-trips the form and selected products', () => {
     const storage = memoryStorage()
-    saveDraft({ form: { vin: '1HGCM82633A004352', name: 'Pat' }, selected: { brake_pads: 2, oil_change: 1 } }, storage, NOW)
+    saveDraft({ form: { zip_code: '80202', name: 'Pat' }, selected: { screened_topsoil: 10, compost: 3 } }, storage, NOW)
     expect(loadDraft(storage, NOW + DAY)).toEqual({
-      form: { vin: '1HGCM82633A004352', name: 'Pat' },
-      selected: { brake_pads: 2, oil_change: 1 }
+      form: { zip_code: '80202', name: 'Pat' },
+      selected: { screened_topsoil: 10, compost: 3 }
     })
   })
 
@@ -46,9 +46,9 @@ describe('intake draft', () => {
 
     storage.setItem(
       DRAFT_KEY,
-      JSON.stringify({ v: 1, savedAt: NOW, form: { name: 42, vin: 'ABC' }, selected: { brake_pads: -1, oil_change: 1.5, air_filter: 1 } })
+      JSON.stringify({ v: 1, savedAt: NOW, form: { name: 42, zip_code: '80202' }, selected: { compost: -1, fill_dirt: 1.5, washed_sand: 2 } })
     )
-    expect(loadDraft(storage, NOW)).toEqual({ form: { vin: 'ABC' }, selected: { air_filter: 1 } })
+    expect(loadDraft(storage, NOW)).toEqual({ form: { zip_code: '80202' }, selected: { washed_sand: 2 } })
   })
 
   it('works without storage', () => {
@@ -61,6 +61,6 @@ describe('intake draft', () => {
     const defaults = { preferred_date: '2026-10-17' }
     expect(isEmptyDraft({ form: { preferred_date: '2026-10-17' }, selected: {} }, defaults)).toBe(true)
     expect(isEmptyDraft({ form: { preferred_date: '2026-10-20' }, selected: {} }, defaults)).toBe(false)
-    expect(isEmptyDraft({ form: {}, selected: { oil_change: 1 } }, defaults)).toBe(false)
+    expect(isEmptyDraft({ form: {}, selected: { compost: 1 } }, defaults)).toBe(false)
   })
 })

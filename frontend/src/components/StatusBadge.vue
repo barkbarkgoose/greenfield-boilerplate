@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { statusOption } from '@/utils/intake'
+import { statusOption } from '@/utils/format'
 
 const props = defineProps<{ status: string }>()
 const { t } = useI18n()

@@ -1,25 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { fetchCatalog } from '@/services/intake'
-import { formatMoney } from '@/utils/intake'
-import type { Catalog } from '@/types/intake'
+import { fetchCatalog, fetchEstimate } from '@/services/intake'
+import { formatMoney } from '@/utils/format'
+import type { Catalog, Plan } from '@/types/intake'
 
 // Text keys are named after the section they appear in: landing-hero__*,
-// landing-steps__*, landing-pricing__*, landing-policies__*, landing-cta__*.
+// landing-zip__*, landing-steps__*, landing-products__*, landing-delivery__*,
+// landing-policies__*, landing-cta__*.
 const { t, locale } = useI18n()
 
 const catalog = ref<Catalog | null>(null)
 const loadError = ref(false)
-
-const leadDays = computed(() => catalog.value?.booking_lead_days ?? 14)
-const pricedServices = computed(() => catalog.value?.services.filter((s) => !s.quote_required) ?? [])
-const otherService = computed(() => catalog.value?.services.find((s) => s.quote_required))
 const steps = [1, 2, 3]
 
 async function load() {
   try {
-    // Service names and deals come from the API in the current language.
+    // Product names come from the API in the current language.
     catalog.value = await fetchCatalog()
     loadError.value = false
   } catch {
@@ -29,119 +26,154 @@ async function load() {
 
 onMounted(load)
 watch(locale, load)
+
+// --- "Do you deliver to me?" -------------------------------------------------------
+
+const zip = ref('')
+const zipResult = ref<Plan | null>(null)
+const zipChecking = ref(false)
+const zipError = ref(false)
+const zipValid = computed(() => /^\d{5}$/.test(zip.value.trim()))
+
+async function checkZip() {
+  if (!zipValid.value) return
+  zipChecking.value = true
+  zipError.value = false
+  try {
+    zipResult.value = (await fetchEstimate([], zip.value.trim(), null)).plan
+  } catch {
+    zipError.value = true
+  } finally {
+    zipChecking.value = false
+  }
+}
 </script>
 
 <template>
   <div class="flex flex-1 flex-col">
-
-    <section class="landing-hero relative overflow-hidden bg-slate-900 text-white">
-      <div class="absolute inset-0 opacity-20" aria-hidden="true">
-        <div class="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-amber-400 blur-3xl" />
-        <div class="absolute -bottom-40 -left-20 h-96 w-96 rounded-full bg-sky-500 blur-3xl" />
+    <section class="landing-hero relative overflow-hidden bg-stone-900 text-white">
+      <div class="absolute inset-0 opacity-25" aria-hidden="true">
+        <div class="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-lime-500 blur-3xl" />
+        <div class="absolute -bottom-40 -left-20 h-96 w-96 rounded-full bg-amber-700 blur-3xl" />
       </div>
       <div class="relative mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[1.3fr_1fr] lg:items-center">
         <div>
-          <p class="text-sm font-semibold uppercase tracking-widest text-amber-400">{{ t('landing-hero__eyebrow') }}</p>
+          <p class="text-sm font-semibold uppercase tracking-widest text-lime-400">{{ t('landing-hero__eyebrow') }}</p>
           <h1 class="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl">{{ t('landing-hero__title') }}</h1>
-          <p class="mt-5 max-w-xl text-lg text-slate-300">
-            {{ t('landing-hero__intro') }} {{ t('site-footer__service-area') }}.
-          </p>
+          <p class="mt-5 max-w-xl text-lg text-stone-300">{{ t('landing-hero__intro') }} {{ t('site-footer__service-area') }}.</p>
           <div class="mt-8 flex flex-col gap-3 sm:flex-row">
             <router-link
-              :to="{ name: 'book' }"
-              class="rounded-xl bg-amber-400 px-6 py-3 text-center text-base font-semibold text-slate-900 shadow-lg shadow-amber-400/20 hover:bg-amber-300"
+              :to="{ name: 'order' }"
+              class="rounded-xl bg-lime-500 px-6 py-3 text-center text-base font-semibold text-stone-900 shadow-lg shadow-lime-500/20 hover:bg-lime-400"
             >
               {{ t('landing-hero__cta--primary') }}
             </router-link>
             <router-link
-              :to="{ name: 'book', query: { mode: 'callback' } }"
-              class="rounded-xl border border-slate-600 px-6 py-3 text-center text-base font-semibold text-white hover:border-slate-400 hover:bg-slate-800"
+              :to="{ name: 'order', query: { mode: 'callback' } }"
+              class="rounded-xl border border-stone-600 px-6 py-3 text-center text-base font-semibold text-white hover:border-stone-400 hover:bg-stone-800"
             >
               {{ t('landing-hero__cta--secondary') }}
             </router-link>
           </div>
         </div>
-        <ul class="grid gap-3 text-sm">
-          <li class="rounded-2xl border border-amber-400/40 bg-slate-800/60 p-4">
-            <p class="font-semibold text-amber-400">{{ t('parts-policy__headline') }}</p>
-            <p class="mt-1 text-slate-400">{{ t('landing-hero__highlight-body--parts') }}</p>
-          </li>
-          <li class="rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
-            <p class="font-semibold text-white">{{ t('landing-hero__highlight-title--flat') }}</p>
-            <p class="mt-1 text-slate-400">{{ t('landing-hero__highlight-body--flat') }}</p>
-          </li>
-          <li class="rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
-            <p class="font-semibold text-white">{{ t('landing-hero__highlight-title--bundles') }}</p>
-            <p class="mt-1 text-slate-400">{{ t('landing-hero__highlight-body--bundles') }}</p>
-          </li>
-          <li class="rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
-            <p class="font-semibold text-white">{{ t('landing-hero__highlight-title--lead-time', { days: leadDays }) }}</p>
-            <p class="mt-1 text-slate-400">{{ t('landing-hero__highlight-body--lead-time') }}</p>
-          </li>
-        </ul>
+
+        <!-- ZIP check -->
+        <div class="landing-zip rounded-3xl border border-stone-700 bg-stone-800/70 p-6">
+          <p class="font-semibold text-white">{{ t('landing-zip__title') }}</p>
+          <p class="mt-1 text-sm text-stone-400">{{ t('landing-zip__intro') }}</p>
+          <form class="mt-4 flex gap-2" @submit.prevent="checkZip">
+            <input
+              v-model="zip"
+              type="text"
+              inputmode="numeric"
+              maxlength="5"
+              autocomplete="postal-code"
+              :placeholder="t('landing-zip__placeholder')"
+              :aria-label="t('landing-zip__placeholder')"
+              class="w-32 rounded-lg border border-stone-600 bg-stone-900 px-3 py-2.5 text-center text-lg tracking-widest text-white placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-lime-500"
+            />
+            <button type="submit" :disabled="!zipValid || zipChecking" class="flex-1 rounded-lg bg-white px-4 py-2.5 font-semibold text-stone-900 hover:bg-stone-100 disabled:opacity-50">
+              {{ zipChecking ? t('landing-zip__checking') : t('landing-zip__button') }}
+            </button>
+          </form>
+          <p v-if="zipError" class="mt-3 text-sm text-red-300">{{ t('landing-zip__error') }}</p>
+          <div v-else-if="zipResult" class="mt-4 rounded-xl p-4 text-sm" :class="zipResult.coverage === 'serve' ? 'bg-lime-500/15 text-lime-100' : 'bg-amber-500/15 text-amber-100'">
+            <p class="font-semibold">
+              <template v-if="zipResult.coverage === 'serve'">
+                {{ zipResult.city ? t('landing-zip__result-title--serve', { city: zipResult.city }) : t('landing-zip__result-title--serve-no-city') }}
+              </template>
+              <template v-else>{{ t(`landing-zip__result-title--${zipResult.coverage}`) }}</template>
+            </p>
+            <p class="mt-1 opacity-90">{{ t(`landing-zip__result-body--${zipResult.coverage}`) }}</p>
+            <router-link
+              :to="zipResult.coverage === 'serve' ? { name: 'order' } : { name: 'order', query: { mode: 'callback' } }"
+              class="mt-3 inline-block font-semibold underline"
+            >
+              {{ zipResult.coverage === 'serve' ? t('landing-zip__result-link--serve') : t('landing-zip__result-link--other') }} →
+            </router-link>
+          </div>
+        </div>
       </div>
     </section>
 
     <section class="landing-steps mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
-      <h2 class="text-2xl font-bold text-slate-900 sm:text-3xl">{{ t('landing-steps__title') }}</h2>
+      <h2 class="text-2xl font-bold text-stone-900 sm:text-3xl">{{ t('landing-steps__title') }}</h2>
       <ol class="mt-8 grid gap-6 md:grid-cols-3">
-        <li v-for="step in steps" :key="step" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <span class="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-amber-400">
-            {{ step }}
-          </span>
-          <h3 class="mt-4 font-semibold text-slate-900">{{ t(`landing-steps__step-title--${step}`) }}</h3>
-          <p class="mt-2 text-sm text-slate-600">{{ t(`landing-steps__step-body--${step}`) }}</p>
+        <li v-for="step in steps" :key="step" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
+          <span class="flex h-9 w-9 items-center justify-center rounded-full bg-stone-900 text-sm font-bold text-lime-400">{{ step }}</span>
+          <h3 class="mt-4 font-semibold text-stone-900">{{ t(`landing-steps__step-title--${step}`) }}</h3>
+          <p class="mt-2 text-sm text-stone-600">{{ t(`landing-steps__step-body--${step}`) }}</p>
         </li>
       </ol>
     </section>
 
-    <section id="pricing" class="landing-pricing scroll-mt-20 border-y border-slate-200 bg-white">
+    <section id="products" class="landing-products scroll-mt-20 border-y border-stone-200 bg-white">
       <div class="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div class="max-w-2xl">
-          <h2 class="text-2xl font-bold text-slate-900 sm:text-3xl">{{ t('landing-pricing__title') }}</h2>
-          <p class="mt-3 text-slate-600">
-            {{ t('landing-pricing__intro') }}
-            <template v-if="catalog">{{ t('landing-pricing__service-call', { fee: formatMoney(catalog.service_call_fee) }) }}</template>
-          </p>
+          <h2 class="text-2xl font-bold text-stone-900 sm:text-3xl">{{ t('landing-products__title') }}</h2>
+          <p class="mt-3 text-stone-600">{{ t('landing-products__intro') }}</p>
         </div>
 
         <p v-if="loadError" class="mt-8 rounded-xl bg-red-50 p-4 text-sm text-red-700">
-          {{ t('landing-pricing__load-error') }}
-          <router-link :to="{ name: 'book', query: { mode: 'callback' } }" class="font-semibold underline">{{ t('landing-pricing__load-error-link') }}</router-link>.
+          {{ t('landing-products__load-error') }}
+          <router-link :to="{ name: 'order', query: { mode: 'callback' } }" class="font-semibold underline">{{ t('landing-products__load-error-link') }}</router-link>.
         </p>
         <div v-else-if="!catalog" class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div v-for="n in 6" :key="n" class="h-28 animate-pulse rounded-2xl bg-slate-100" />
+          <div v-for="n in 6" :key="n" class="h-28 animate-pulse rounded-2xl bg-stone-100" />
         </div>
         <template v-else>
           <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div v-for="service in pricedServices" :key="service.key" class="flex flex-col rounded-2xl border border-slate-200 p-5">
+            <div v-for="p in catalog.products" :key="p.key" class="flex flex-col rounded-2xl border border-stone-200 p-5">
               <div class="flex items-baseline justify-between gap-3">
-                <h3 class="font-semibold text-slate-900">{{ service.name }}</h3>
-                <p class="whitespace-nowrap text-lg font-bold text-slate-900">
-                  {{ formatMoney(service.price) }}<span v-if="service.unit" class="text-sm font-medium text-slate-500">/{{ t(`landing-pricing__unit--${service.unit}`) }}</span>
+                <h3 class="font-semibold text-stone-900">{{ p.name }}</h3>
+                <p class="whitespace-nowrap text-lg font-bold text-stone-900">
+                  {{ formatMoney(p.price_per_yard) }}<span class="text-sm font-medium text-stone-500">/{{ t('order-products__unit') }}</span>
                 </p>
               </div>
-              <p class="mt-2 flex-1 text-sm text-slate-600">{{ service.description }}</p>
-            </div>
-            <div v-if="otherService" class="flex flex-col rounded-2xl border border-dashed border-slate-300 p-5">
-              <div class="flex items-baseline justify-between gap-3">
-                <h3 class="font-semibold text-slate-900">{{ otherService.name }}</h3>
-                <p class="whitespace-nowrap text-sm font-semibold text-slate-500">{{ t('landing-pricing__quoted') }}</p>
+              <p class="mt-2 flex-1 text-sm text-stone-600">{{ p.description }}</p>
+              <div class="mt-3 flex items-center justify-between text-sm">
+                <span class="text-stone-500">{{ p.min_yards > 1 ? t('order-products__minimum', { min: p.min_yards }) : '' }}</span>
+                <router-link :to="{ name: 'order', query: { product: p.key } }" class="font-semibold text-lime-700 hover:text-lime-600">
+                  {{ t('landing-products__order-link') }} →
+                </router-link>
               </div>
-              <p class="mt-2 text-sm text-slate-600">{{ otherService.description }}</p>
             </div>
           </div>
 
-          <div class="mt-8 grid gap-4 md:grid-cols-2">
-            <div v-for="bundle in catalog.bundles" :key="bundle.key" class="rounded-2xl bg-emerald-50 p-5 ring-1 ring-emerald-200">
-              <p class="font-semibold text-emerald-900">
-                {{ t('landing-pricing__bundle-title', { name: bundle.name, amount: formatMoney(bundle.discount_per_unit) }) }}
+          <div class="landing-delivery mt-8 grid gap-4 md:grid-cols-3">
+            <div class="rounded-2xl bg-lime-50 p-5 ring-1 ring-lime-200">
+              <p class="font-semibold text-lime-900">{{ t('landing-delivery__title--base', { fee: formatMoney(catalog.delivery_base_fee) }) }}</p>
+              <p class="mt-1 text-sm text-lime-900/80">
+                {{ t('landing-delivery__body--base', { miles: catalog.included_miles, perMile: formatMoney(catalog.per_mile_fee) }) }}
               </p>
-              <p class="mt-1 text-sm text-emerald-800">{{ bundle.description }}</p>
             </div>
-            <div v-for="deal in catalog.deals" :key="deal.key" class="rounded-2xl bg-emerald-50 p-5 ring-1 ring-emerald-200">
-              <p class="font-semibold text-emerald-900">{{ deal.name }}</p>
-              <p class="mt-1 text-sm text-emerald-800">{{ deal.description }}</p>
+            <div class="rounded-2xl bg-lime-50 p-5 ring-1 ring-lime-200">
+              <p class="font-semibold text-lime-900">{{ t('landing-delivery__title--loads') }}</p>
+              <p class="mt-1 text-sm text-lime-900/80">{{ t('landing-delivery__body--loads') }}</p>
+            </div>
+            <div class="rounded-2xl bg-orange-50 p-5 ring-1 ring-orange-200">
+              <p class="font-semibold text-orange-900">{{ t('landing-delivery__title--rush', { fee: formatMoney(catalog.rush_fee) }) }}</p>
+              <p class="mt-1 text-sm text-orange-900/80">{{ t('landing-delivery__body--rush') }}</p>
             </div>
           </div>
         </template>
@@ -149,37 +181,20 @@ watch(locale, load)
     </section>
 
     <section class="landing-policies mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
-      <h2 class="text-2xl font-bold text-slate-900 sm:text-3xl">{{ t('landing-policies__title') }}</h2>
+      <h2 class="text-2xl font-bold text-stone-900 sm:text-3xl">{{ t('landing-policies__title') }}</h2>
       <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="rounded-2xl bg-emerald-50 p-6 ring-1 ring-emerald-200">
-          <h3 class="font-semibold text-emerald-900">{{ t('landing-policies__card-title--parts') }}</h3>
-          <p class="mt-2 text-sm text-emerald-900/80">{{ t('parts-policy__long') }}</p>
-        </div>
-        <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <h3 class="font-semibold text-slate-900">{{ t('landing-policies__card-title--lead-time', { days: leadDays }) }}</h3>
-          <p class="mt-2 text-sm text-slate-600">{{ t('landing-policies__card-body--lead-time') }}</p>
-        </div>
-        <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <h3 class="font-semibold text-slate-900">{{ t('landing-policies__card-title--emergency') }}</h3>
-          <p class="mt-2 text-sm text-slate-600">
-            {{ t('landing-policies__card-body--emergency', {
-              days: catalog?.emergency_window_days ?? 7,
-              fee: catalog ? formatMoney(catalog.emergency_fee) : '—'
-            }) }}
-          </p>
-        </div>
-        <div class="rounded-2xl bg-amber-50 p-6 ring-1 ring-amber-200">
-          <h3 class="font-semibold text-amber-900">{{ t('landing-policies__card-title--short-notice') }}</h3>
-          <p class="mt-2 text-sm text-amber-900/80">{{ t('landing-policies__card-body--short-notice') }}</p>
+        <div v-for="card in ['access', 'amount', 'days', 'special']" :key="card" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
+          <h3 class="font-semibold text-stone-900">{{ t(`landing-policies__card-title--${card}`) }}</h3>
+          <p class="mt-2 text-sm text-stone-600">{{ t(`landing-policies__card-body--${card}`) }}</p>
         </div>
       </div>
 
-      <div class="landing-cta mt-12 flex flex-col items-start gap-4 rounded-3xl bg-slate-900 p-8 text-white sm:flex-row sm:items-center sm:justify-between">
+      <div class="landing-cta mt-12 flex flex-col items-start gap-4 rounded-3xl bg-stone-900 p-8 text-white sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p class="text-xl font-bold">{{ t('landing-cta__title') }}</p>
-          <p class="mt-1 text-slate-300">{{ t('landing-cta__body') }}</p>
+          <p class="mt-1 text-stone-300">{{ t('landing-cta__body') }}</p>
         </div>
-        <router-link :to="{ name: 'book' }" class="rounded-xl bg-amber-400 px-6 py-3 font-semibold text-slate-900 hover:bg-amber-300">
+        <router-link :to="{ name: 'order' }" class="rounded-xl bg-lime-500 px-6 py-3 font-semibold text-stone-900 hover:bg-lime-400">
           {{ t('landing-cta__button') }}
         </router-link>
       </div>

@@ -6,7 +6,7 @@ import { applyPageMeta } from '@/i18n/seo'
 
 const routes: RouteRecordRaw[] = [
   // Public, customer-facing pages: no account needed. `localized` pages also
-  // have a Spanish address (/es, /es/book) for search engines; every other
+  // have a Spanish address (/es, /es/order) for search engines; every other
   // page follows the visitor's saved language. See README "Translations".
   {
     path: '/:locale(es)?',
@@ -15,9 +15,9 @@ const routes: RouteRecordRaw[] = [
     meta: { localized: true }
   },
   {
-    path: '/:locale(es)?/book',
-    name: 'book',
-    component: () => import('@/views/IntakeView.vue'),
+    path: '/:locale(es)?/order',
+    name: 'order',
+    component: () => import('@/views/OrderView.vue'),
     meta: { localized: true }
   },
   {
@@ -53,7 +53,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/ResetPasswordView.vue')
   },
 
-  // Customers: their garage (vehicles + repair history) and request threads.
+  // Customers: their orders, order pages and claim links.
   {
     path: '/account',
     name: 'account',
@@ -61,9 +61,9 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true }
   },
   {
-    path: '/account/requests/:id',
-    name: 'account-request',
-    component: () => import('@/views/CustomerRequestView.vue'),
+    path: '/account/orders/:id',
+    name: 'account-order',
+    component: () => import('@/views/CustomerOrderView.vue'),
     meta: { requiresAuth: true }
   },
   {
@@ -73,7 +73,7 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true }
   },
 
-  // The mechanic (staff users).
+  // Staff: orders and the dispatch board.
   {
     path: '/dashboard',
     name: 'dashboard',
@@ -81,9 +81,15 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresStaff: true }
   },
   {
-    path: '/dashboard/requests/:id',
-    name: 'staff-request',
-    component: () => import('@/views/StaffRequestView.vue'),
+    path: '/dashboard/orders/:id',
+    name: 'staff-order',
+    component: () => import('@/views/StaffOrderView.vue'),
+    meta: { requiresAuth: true, requiresStaff: true }
+  },
+  {
+    path: '/dashboard/dispatch',
+    name: 'dispatch',
+    component: () => import('@/views/StaffDispatchView.vue'),
     meta: { requiresAuth: true, requiresStaff: true }
   },
 
