@@ -34,7 +34,10 @@ const accountLinkActive = computed(() => route.path.startsWith(accountLink.value
 // own paths, so matching the route name alone isn't enough to tell them apart.
 const pricingActive = computed(() => route.name === 'home' && route.hash === '#pricing')
 const contactActive = computed(() => route.name === 'book' && route.query.mode === 'callback')
-const activeLinkClass = 'bg-slate-800 text-white'
+// Top-bar tabs signal "active" with an underline; the dropdown (a list menu,
+// not a tab strip) uses a background highlight instead.
+const activeLinkClass = 'text-white border-amber-400'
+const inactiveLinkClass = 'text-slate-300 border-transparent hover:text-white'
 const activeMenuItemClass = 'bg-slate-100 text-slate-900'
 
 const displayName = computed(() => authStore.user?.name || authStore.user?.email || t('app-nav__account-fallback'))
@@ -73,7 +76,7 @@ watch(() => route.fullPath, closeMenu)
 onMounted(() => document.addEventListener('click', handleDocumentClick))
 onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick))
 
-const linkClass = 'rounded-lg px-3 py-2 text-sm font-medium text-slate-300 hover:text-white'
+const linkClass = 'rounded-t-lg px-3 py-2 text-sm font-medium border-b-2 transition-colors'
 const menuItemClass =
   'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900'
 </script>
@@ -93,14 +96,14 @@ const menuItemClass =
       <nav class="flex items-center gap-1 sm:gap-2">
         <router-link
           :to="{ name: 'home', hash: '#pricing' }"
-          :class="[linkClass, 'hidden md:block', pricingActive && activeLinkClass]"
+          :class="[linkClass, 'hidden md:block', pricingActive ? activeLinkClass : inactiveLinkClass]"
           :aria-current="pricingActive ? 'page' : undefined"
         >
           {{ t('site-header__nav-link--pricing') }}
         </router-link>
         <router-link
           :to="{ name: 'book', query: { mode: 'callback' } }"
-          :class="[linkClass, 'hidden md:block', contactActive && activeLinkClass]"
+          :class="[linkClass, 'hidden md:block', contactActive ? activeLinkClass : inactiveLinkClass]"
           :aria-current="contactActive ? 'page' : undefined"
         >
           {{ t('site-header__nav-link--contact') }}
@@ -110,8 +113,8 @@ const menuItemClass =
           v-if="!authStore.isStaff"
           :is="authStore.isAuthenticated ? RouterLink : 'button'"
           v-bind="authStore.isAuthenticated ? { to: '/account' } : { type: 'button', 'aria-haspopup': 'dialog' }"
-          class="site-header__garage-link flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium sm:px-3"
-          :class="garageLinkActive ? activeLinkClass : 'text-slate-300 hover:text-white'"
+          class="site-header__garage-link flex items-center gap-1.5 rounded-t-lg border-b-2 px-2.5 py-2 text-sm font-medium transition-colors sm:px-3"
+          :class="garageLinkActive ? activeLinkClass : inactiveLinkClass"
           :aria-label="t('site-header__nav-link--garage')"
           :aria-current="garageLinkActive ? 'page' : undefined"
           @click="openGarage"
@@ -134,7 +137,7 @@ const menuItemClass =
         <router-link
           v-if="!authStore.isAuthenticated"
           :to="{ name: 'login' }"
-          :class="[linkClass, 'whitespace-nowrap']"
+          :class="[linkClass, inactiveLinkClass, 'whitespace-nowrap']"
         >
           {{ t('site-header__nav-link--sign-in') }}
         </router-link>
