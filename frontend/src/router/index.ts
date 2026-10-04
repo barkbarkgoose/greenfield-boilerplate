@@ -98,7 +98,7 @@ const router = createRouter({
   }
 })
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   // Language: ?lang=es (from email links) or an /es/ address sets it; a
   // Spanish-speaking visitor on an English address is sent to the /es/ one.
   if (isLocale(to.query.lang)) setLocale(to.query.lang)
@@ -111,9 +111,9 @@ router.beforeEach((to, _from, next) => {
   }
 
   const authStore = useAuthStore()
-  // loadFromStorage also drops an expired token, so isAuthenticated below
-  // correctly reports false once the JWT lifetime has elapsed.
-  authStore.loadFromStorage()
+  // loadFromStorage renews a short-lived access token (or drops an ended
+  // session), so isAuthenticated below is accurate.
+  await authStore.loadFromStorage()
 
   // Role checks here are UX only; the API enforces permissions.
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {

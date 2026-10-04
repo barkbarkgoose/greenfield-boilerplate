@@ -160,3 +160,87 @@ class TestPasswordReset:
         client = APIClient()
         client.credentials(HTTP_AUTHORIZATION="Bearer not-a-real-token")
         assert self.request_reset(client, sample_user.email).status_code == 204
+
+
+def login(client, email, password=VALID_PASSWORD):
+    return client.post("/api/v1/auth/login/", {"email": email, "password": password}, format="json")
+
+
+@pytest.mark.django_db
+class TestSessions:
+    @pytest.fixture
+    def staff_user(self, db):
+        return User.objects.create_user(
+            email="mech@example.com", name="Mech", password=VALID_PASSWORD, is_staff=True
+        )
+
+    @staticmethod
+    def lifetimes(data):
+        from datetime import timedelta
+
+        from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+
+        access, refresh = AccessToken(data["access"]), RefreshToken(data["refresh"])
+        now = access["iat"]
+        return (
+            timedelta(seconds=access["exp"] - now),
+            timedelta(seconds=refresh["exp"] - now),
+        )
+
+    def test_staff_get_short_sessions(self, api_client, staff_user, settings):
+        access, session = self.lifetimes(login(api_client, staff_user.email).data)
+        assert access == settings.STAFF_ACCESS_TOKEN_LIFETIME
+        assert session == settings.STAFF_SESSION_LIFETIME
+
+    def test_customers_get_standard_sessions(self, api_client, sample_user, settings):
+        access, session = self.lifetimes(login(api_client, sample_user.email).data)
+        assert access == settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"]
+        assert session == settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"]
+        assert session > settings.STAFF_SESSION_LIFETIME
+
+    def test_register_returns_a_refresh_token(self, api_client, db):
+        response = api_client.post(
+            "/api/v1/auth/register/",
+            {"email": "new@example.com", "name": "New", "password": VALID_PASSWORD},
+            format="json",
+        )
+        assert response.data["token"] and response.data["refresh"]
+
+    def test_refresh_renews_access_with_staff_lifetime(self, api_client, staff_user, settings):
+        from datetime import timedelta
+
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        tokens = login(api_client, staff_user.email).data
+        # A stale access token in the header must not block renewing it.
+        api_client.credentials(HTTP_AUTHORIZATION="Bearer stale")
+        response = api_client.post("/api/v1/auth/refresh/", {"refresh": tokens["refresh"]}, format="json")
+        assert response.status_code == 200
+        access = AccessToken(response.data["access"])
+        assert timedelta(seconds=access["exp"] - access["iat"]) == settings.STAFF_ACCESS_TOKEN_LIFETIME
+
+    def test_disabled_account_cannot_refresh(self, api_client, sample_user):
+        tokens = login(api_client, sample_user.email).data
+        sample_user.is_active = False
+        sample_user.save()
+        response = api_client.post("/api/v1/auth/refresh/", {"refresh": tokens["refresh"]}, format="json")
+        assert response.status_code == 401
+
+    def test_password_change_ends_other_sessions(self, api_client, sample_user):
+        tokens = login(api_client, sample_user.email).data
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+        assert client.get("/api/v1/garage/requests/").status_code == 200
+
+        sample_user.set_password(NEW_PASSWORD)
+        sample_user.save()
+
+        assert client.get("/api/v1/garage/requests/").status_code == 401
+        response = api_client.post("/api/v1/auth/refresh/", {"refresh": tokens["refresh"]}, format="json")
+        assert response.status_code == 401
+        # Signing in with the new password works as usual.
+        assert login(api_client, sample_user.email, NEW_PASSWORD).status_code == 200
+
+    def test_garbage_refresh_token_is_rejected(self, api_client, db):
+        response = api_client.post("/api/v1/auth/refresh/", {"refresh": "nope"}, format="json")
+        assert response.status_code == 401

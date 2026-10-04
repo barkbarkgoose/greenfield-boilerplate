@@ -123,6 +123,11 @@ boilerplate/
 - **Password reset by email**: one-time links that expire after 2 hours
   (`PASSWORD_RESET_TIMEOUT`)
 - **Rate limits** on sign-in (30/hour per IP) and reset requests (5/hour per IP)
+- **Sessions** (`apps/users/tokens.py`, `frontend/src/utils/session.ts`): a short-lived
+  access token renewed silently with a refresh token. Customers stay signed in for
+  7 days (`JWT_*` keychain settings). Staff tokens last 15 minutes and staff sign in
+  again after 8 hours (`STAFF_ACCESS_TOKEN_MINUTES`, `STAFF_SESSION_HOURS`).
+  Changing or resetting a password signs out every other device right away.
 
 The boilerplate's organizations and per-user settings / AI API key storage were
 removed: this site doesn't use them. `apps/organizations` stays only as a migration

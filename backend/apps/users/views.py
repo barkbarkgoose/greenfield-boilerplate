@@ -9,7 +9,6 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.intake import notifications
 from apps.intake.i18n import current_language
@@ -21,6 +20,7 @@ from .serializers import (
     RegisterSerializer,
     UserSerializer,
 )
+from .tokens import SessionEnded, issue_tokens, refresh_access
 
 User = get_user_model()
 
@@ -35,10 +35,11 @@ class RegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        refresh = RefreshToken.for_user(user)
-
+        tokens = issue_tokens(user)
         user_data = UserSerializer(user).data
-        user_data["token"] = str(refresh.access_token)
+        # "token" is the access token (kept for older clients); "refresh" renews it.
+        user_data["token"] = tokens["access"]
+        user_data["refresh"] = tokens["refresh"]
 
         return Response(user_data, status=status.HTTP_201_CREATED)
 
@@ -76,23 +77,18 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        refresh = RefreshToken.for_user(user)
-        user_data = UserSerializer(user).data
-
         return Response(
-            {
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-                "user": user_data,
-            },
+            {**issue_tokens(user), "user": UserSerializer(user).data},
             status=status.HTTP_200_OK,
         )
 
 
 class RefreshTokenView(APIView):
-    """Refresh access token using refresh token."""
+    """Renew the access token with the refresh token (until the session ends)."""
 
     permission_classes = [AllowAny]
+    # A stale access token must not 401 the very call meant to replace it.
+    authentication_classes: list = []
 
     def post(self, request):
         refresh_token = request.data.get("refresh")
@@ -103,17 +99,14 @@ class RefreshTokenView(APIView):
             )
 
         try:
-            refresh = RefreshToken(refresh_token)
-        except Exception:
+            access = refresh_access(str(refresh_token))
+        except SessionEnded:
             return Response(
                 {"detail": "Invalid or expired refresh token."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        return Response(
-            {"access": str(refresh.access_token)},
-            status=status.HTTP_200_OK,
-        )
+        return Response({"access": access}, status=status.HTTP_200_OK)
 
 
 class PasswordResetRequestView(APIView):

@@ -8,6 +8,7 @@ import type {
   RegisterResponse
 } from '@/types/auth'
 import { isTokenExpired } from '@/utils/jwt'
+import { validAccessToken } from '@/utils/session'
 import {
   REFRESH_KEY,
   TOKEN_KEY,
@@ -31,12 +32,14 @@ export const useAuthStore = defineStore('auth', () => {
     clearStoredAuth()
   }
 
-  function loadFromStorage(): void {
-    const storedToken = localStorage.getItem(TOKEN_KEY)
-
-    // Treat a missing or expired/malformed access token as logged out so the
-    // router guard can redirect to /login instead of leaving the UI broken.
-    if (!storedToken || isTokenExpired(storedToken)) {
+  /**
+   * Load the session from storage, renewing the access token if it's about to
+   * expire. A session that can't be renewed is treated as signed out, so the
+   * router guard can send the person to /login.
+   */
+  async function loadFromStorage(): Promise<void> {
+    const storedToken = await validAccessToken()
+    if (!storedToken) {
       clearAuthState()
       return
     }
@@ -70,6 +73,9 @@ export const useAuthStore = defineStore('auth', () => {
     const response = await api.post<RegisterResponse>('/api/v1/auth/register/', payload)
     token.value = response.data.token
     localStorage.setItem(TOKEN_KEY, response.data.token)
+    if (response.data.refresh) {
+      localStorage.setItem(REFRESH_KEY, response.data.refresh)
+    }
     storeUser({
       id: response.data.id,
       email: response.data.email,

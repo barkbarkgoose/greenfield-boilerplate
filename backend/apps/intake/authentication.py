@@ -1,8 +1,9 @@
 """Authentication helpers for endpoints that work with or without a login."""
 
 from rest_framework.exceptions import AuthenticationFailed
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken
+
+from apps.users.authentication import JWTAuthentication
 
 
 class OptionalJWTAuthentication(JWTAuthentication):

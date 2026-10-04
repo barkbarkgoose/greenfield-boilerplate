@@ -153,7 +153,7 @@ CORS_ALLOWED_ORIGINS = _keychain_or_env_list(
 # REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.users.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
@@ -205,6 +205,11 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": _ACCESS_LIFETIME,
     "REFRESH_TOKEN_LIFETIME": _REFRESH_LIFETIME,
 }
+
+# Staff sessions are shorter (see apps/users/tokens.py): access tokens renew
+# silently every 15 minutes, and staff sign in again after 8 hours.
+STAFF_ACCESS_TOKEN_LIFETIME = timedelta(minutes=env.int("STAFF_ACCESS_TOKEN_MINUTES", default=15))
+STAFF_SESSION_LIFETIME = timedelta(hours=env.int("STAFF_SESSION_HOURS", default=8))
 
 # --- Email -------------------------------------------------------------------
 # SMTP by default; local/test settings override the backend. Credentials come

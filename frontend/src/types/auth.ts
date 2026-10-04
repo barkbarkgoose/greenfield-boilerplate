@@ -21,6 +21,7 @@ export interface RegisterResponse {
   name: string
   is_staff?: boolean
   token: string
+  refresh?: string
 }
 
 export interface User {
