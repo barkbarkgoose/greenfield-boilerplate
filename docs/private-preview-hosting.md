@@ -333,6 +333,7 @@ Pages with Access in front is the static equivalent of this doc's setup.
    - `fly volumes create data --size 1`
    - `fly secrets set SECRET_KEY=<long random> SITE_URL=https://<your preview host>`
    - `fly secrets set ALLOWED_HOSTS=<host> CSRF_TRUSTED_ORIGINS=https://<host>`
+   - `fly secrets set ADMIN_URL=<hard-to-guess path>/` (otherwise it's random per start)
    - Optional: `PREVIEW_PASSWORD`, `TURNSTILE_SECRET_KEY`
 3. `fly tokens create deploy` and add the result to GitHub (repo Settings → Secrets and
    variables → Actions) as `FLY_API_TOKEN`.

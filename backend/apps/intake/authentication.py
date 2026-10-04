@@ -1,6 +1,6 @@
 """Authentication helpers for endpoints that work with or without a login."""
 
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework_simplejwt.exceptions import InvalidToken
 
 from apps.users.authentication import JWTAuthentication
@@ -16,5 +16,5 @@ class OptionalJWTAuthentication(JWTAuthentication):
     def authenticate(self, request):
         try:
             return super().authenticate(request)
-        except (InvalidToken, AuthenticationFailed):
+        except (InvalidToken, AuthenticationFailed, PermissionDenied):
             return None

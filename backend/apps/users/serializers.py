@@ -1,5 +1,6 @@
 """Users app serializers."""
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
@@ -10,16 +11,29 @@ from rest_framework import serializers
 
 from apps.intake.i18n import t
 
+from .models import Passkey
+
 User = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model."""
 
+    passkey_required = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ["id", "email", "name", "is_staff"]
+        fields = ["id", "email", "name", "is_staff", "passkey_required"]
         read_only_fields = ["is_staff"]
+
+    def get_passkey_required(self, obj):
+        return bool(settings.PASSKEYS_ENABLED and obj.passkey_required)
+
+
+class PasskeySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Passkey
+        fields = ["id", "name", "created_at", "last_used_at"]
 
 
 class RegisterSerializer(serializers.Serializer):

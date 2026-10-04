@@ -5,9 +5,10 @@ import type {
   LoginCredentials,
   RegisterRequest,
   LoginResponse,
+  PasskeyStepResponse,
   RegisterResponse
 } from '@/types/auth'
-import { isTokenExpired } from '@/utils/jwt'
+import { decodeJwtPayload, isTokenExpired } from '@/utils/jwt'
 import { validAccessToken } from '@/utils/session'
 import {
   REFRESH_KEY,
@@ -23,6 +24,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!token.value && !isTokenExpired(token.value))
   const isStaff = computed(() => isAuthenticated.value && !!user.value?.is_staff)
+  // A session that must save a passkey before anything else works (psr claim).
+  const passkeySetupRequired = computed(
+    () => isAuthenticated.value && !!decodeJwtPayload(token.value!)?.psr
+  )
   // Where a signed-in person lands: the mechanic's dashboard or the customer's garage.
   const homeRoute = computed(() => (isStaff.value ? '/dashboard' : '/account'))
 
@@ -57,16 +62,27 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
   }
 
-  async function login(credentials: LoginCredentials): Promise<void> {
-    const response = await api.post<LoginResponse>('/api/v1/auth/login/', credentials)
-    token.value = response.data.access
-    localStorage.setItem(TOKEN_KEY, response.data.access)
-    if (response.data.refresh) {
-      localStorage.setItem(REFRESH_KEY, response.data.refresh)
+  /** Save a new session from any sign-in response. */
+  function startSession(data: { access: string; refresh?: string; user?: User }): void {
+    token.value = data.access
+    localStorage.setItem(TOKEN_KEY, data.access)
+    if (data.refresh) {
+      localStorage.setItem(REFRESH_KEY, data.refresh)
     }
-    if (response.data.user) {
-      storeUser(response.data.user)
+    if (data.user) {
+      storeUser(data.user)
     }
+  }
+
+  /**
+   * Password sign-in. Accounts that require a passkey get a passkey challenge
+   * back instead of a session; finish with completePasskeyLogin().
+   */
+  async function login(credentials: LoginCredentials): Promise<PasskeyStepResponse | null> {
+    const response = await api.post<LoginResponse | PasskeyStepResponse>('/api/v1/auth/login/', credentials)
+    if ('passkey_required' in response.data) return response.data
+    startSession(response.data)
+    return null
   }
 
   async function register(payload: RegisterRequest): Promise<void> {
@@ -84,6 +100,11 @@ export const useAuthStore = defineStore('auth', () => {
     })
   }
 
+  /** Swap in a session returned by the passkey endpoints. */
+  function completePasskeyLogin(data: { access: string; refresh?: string; user?: User }): void {
+    startSession(data)
+  }
+
   function logout(): void {
     clearAuthState()
   }
@@ -93,9 +114,11 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     isAuthenticated,
     isStaff,
+    passkeySetupRequired,
     homeRoute,
     loadFromStorage,
     login,
+    completePasskeyLogin,
     register,
     logout
   }

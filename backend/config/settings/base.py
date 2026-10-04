@@ -1,8 +1,10 @@
 """Base settings for config project."""
 
+import secrets
 import sys
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
 import environ
 
@@ -19,8 +21,14 @@ environ.Env.read_env(BASE_DIR / ".env")
 
 from keychain import (  # noqa: E402
     KeychainNotInitializedError,
+)
+from keychain import (
     get as keychain_get,
+)
+from keychain import (
     get_int as keychain_get_int,
+)
+from keychain import (
     get_list as keychain_get_list,
 )
 
@@ -116,6 +124,15 @@ DATABASE_URL = _keychain_or_env(
 DATABASES = {"default": env.db_url_config(DATABASE_URL)}
 
 AUTH_USER_MODEL = "users.User"
+
+# Django admin address. Set ADMIN_URL (e.g. "back-office-7f3k2q/") to a hard-to-
+# guess path in each environment. Unset, it's random and changes every time the
+# server starts (printed in the server log), so the admin is effectively hidden.
+# With several server processes (gunicorn workers) each gets its own random path,
+# so set ADMIN_URL anywhere you actually use the admin.
+_ADMIN_URL = (_keychain_or_env("ADMIN_URL", "ADMIN_URL", default="") or "").strip().strip("/")
+ADMIN_URL_IS_RANDOM = not _ADMIN_URL
+ADMIN_URL = (_ADMIN_URL or f"admin-{secrets.token_urlsafe(16)}") + "/"
 
 # Password reset links work once and expire after this many seconds. The
 # customer-facing text says "2 hours" (auth-forgot__sent, auth-reset__invalid).
@@ -236,6 +253,15 @@ BUSINESS_NAME = env("BUSINESS_NAME", default="Wrench on Wheels")
 
 # Public URL of the frontend, used for links inside emails.
 SITE_URL = (_keychain_or_env("SITE_URL", "SITE_URL", default="http://localhost:5177") or "").rstrip("/")
+
+# Passkeys (apps/users/passkeys.py). Required per account with
+# User.passkey_required; PASSKEYS_ENABLED=False switches that off everywhere.
+# A passkey belongs to PASSKEY_RP_ID (the site's domain, from SITE_URL) and is
+# only accepted from PASSKEY_ORIGINS, so each environment has its own.
+PASSKEYS_ENABLED = env.bool("PASSKEYS_ENABLED", default=True)
+PASSKEY_RP_ID = env("PASSKEY_RP_ID", default="") or (urlparse(SITE_URL).hostname or "localhost")
+PASSKEY_RP_NAME = env("PASSKEY_RP_NAME", default="") or BUSINESS_NAME
+PASSKEY_ORIGINS = env.list("PASSKEY_ORIGINS", default=[SITE_URL])
 
 # --- Parts estimates -----------------------------------------------------------
 # Estimates come from the PartPriceExample table (see apps/intake/parts.py) and

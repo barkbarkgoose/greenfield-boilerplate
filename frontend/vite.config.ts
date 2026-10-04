@@ -23,6 +23,8 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true
       },
+      // The Django admin. ADMIN_URL's random fallback starts with "admin-", so it's
+      // covered; a custom ADMIN_URL is reachable on the backend port directly.
       '/admin': {
         target: backendTarget,
         changeOrigin: true

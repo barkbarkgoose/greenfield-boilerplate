@@ -287,6 +287,7 @@ class CustomerSummarySerializer(serializers.Serializer):
 
 class StaffRequestSerializer(CustomerRequestSerializer):
     customer = CustomerSummarySerializer(read_only=True)
+    admin_url = serializers.SerializerMethodField()
     customer_request_count = serializers.SerializerMethodField()
     notify_customer = serializers.BooleanField(write_only=True, required=False, default=False)
 
@@ -300,6 +301,7 @@ class StaffRequestSerializer(CustomerRequestSerializer):
             "contact_consent",
             "marketing_consent",
             "consent_at",
+            "admin_url",
             "notify_customer",
         ]
         read_only_fields = [
@@ -311,6 +313,10 @@ class StaffRequestSerializer(CustomerRequestSerializer):
             ]  # fmt: skip
             if f not in {"status", "scheduled_for", "completed_on", "odometer", "final_total"}
         ]
+
+    def get_admin_url(self, obj):
+        """Where the Django admin lives (ADMIN_URL), for links to the price table."""
+        return f"/{settings.ADMIN_URL}"
 
     def get_invoice(self, obj):
         """Staff see the invoice draft too."""

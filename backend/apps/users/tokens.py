@@ -21,6 +21,9 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 PASSWORD_CLAIM = "pv"
+# Set on sessions that must save a passkey before doing anything else
+# (see passkeys.py and authentication.py).
+PASSKEY_SETUP_CLAIM = "psr"
 
 
 def password_version(user) -> str:
@@ -31,10 +34,15 @@ def _staff_access_lifetime(access) -> None:
     access.set_exp(lifetime=settings.STAFF_ACCESS_TOKEN_LIFETIME)
 
 
-def issue_tokens(user) -> dict:
-    """A new session for ``user``: ``{"access", "refresh"}``."""
+def issue_tokens(user, passkey_setup: bool = False) -> dict:
+    """A new session for ``user``: ``{"access", "refresh"}``.
+
+    ``passkey_setup`` limits the session to saving a passkey.
+    """
     refresh = RefreshToken.for_user(user)
     refresh[PASSWORD_CLAIM] = password_version(user)
+    if passkey_setup:
+        refresh[PASSKEY_SETUP_CLAIM] = True
     if user.is_staff:
         refresh.set_exp(lifetime=settings.STAFF_SESSION_LIFETIME)
     access = refresh.access_token  # copies the pv claim

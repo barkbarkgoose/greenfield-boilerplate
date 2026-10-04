@@ -57,6 +57,7 @@ class TestAuthViews:
             "email": sample_user.email,
             "name": "Test User",
             "is_staff": False,
+            "passkey_required": False,
         }
 
     def test_login_email_is_case_insensitive(self, api_client, sample_user):

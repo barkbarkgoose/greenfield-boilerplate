@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
+import { isPasskeyCancelled, signInWithPasskey } from '@/services/passkeys'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -13,6 +14,9 @@ const email = ref('')
 const password = ref('')
 const isLoading = ref(false)
 const errorMessage = ref('')
+// Accounts that require a passkey: after the password, the password manager
+// (e.g. Bitwarden) is asked for the passkey.
+const waitingForPasskey = ref(false)
 
 // Only follow in-app redirects (e.g. a claim link), never absolute URLs.
 const redirect = computed(() => {
@@ -26,10 +30,20 @@ async function handleSubmit() {
   errorMessage.value = ''
 
   try {
-    await authStore.login({ email: email.value, password: password.value })
-    router.push(redirect.value ?? authStore.homeRoute)
+    const passkeyStep = await authStore.login({ email: email.value, password: password.value })
+    if (passkeyStep) {
+      waitingForPasskey.value = true
+      authStore.completePasskeyLogin(await signInWithPasskey(passkeyStep))
+    }
+    if (authStore.passkeySetupRequired) {
+      router.push({ name: 'passkey-setup', query: redirect.value ? { redirect: redirect.value } : {} })
+    } else {
+      router.push(redirect.value ?? authStore.homeRoute)
+    }
   } catch (error: unknown) {
-    if (error && typeof error === 'object' && 'response' in error) {
+    if (waitingForPasskey.value) {
+      errorMessage.value = isPasskeyCancelled(error) ? t('auth-login__error--passkey-cancelled') : t('auth-login__error--passkey')
+    } else if (error && typeof error === 'object' && 'response' in error) {
       // The API's 401 text is English-only; show our own translated message.
       const err = error as { response?: { status?: number; data?: { detail?: string } } }
       errorMessage.value =
@@ -43,6 +57,7 @@ async function handleSubmit() {
     }
   } finally {
     isLoading.value = false
+    waitingForPasskey.value = false
   }
 }
 
@@ -85,7 +100,7 @@ const inputClass =
             :disabled="isLoading"
             class="w-full rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {{ isLoading ? t('auth-login__submit--loading') : t('auth-login__submit') }}
+            {{ waitingForPasskey ? t('auth-login__submit--passkey') : isLoading ? t('auth-login__submit--loading') : t('auth-login__submit') }}
           </button>
         </form>
       </div>

@@ -13,6 +13,15 @@ export interface LoginResponse {
   access: string
   refresh: string
   user?: User
+  // This session can only save a passkey (see the passkey setup page).
+  passkey_setup_required?: boolean
+}
+
+// Returned instead of tokens when the account requires a passkey.
+export interface PasskeyStepResponse {
+  passkey_required: true
+  options: import('@simplewebauthn/browser').PublicKeyCredentialRequestOptionsJSON
+  challenge_token: string
 }
 
 export interface RegisterResponse {
@@ -29,6 +38,7 @@ export interface User {
   email: string
   name: string
   is_staff?: boolean
+  passkey_required?: boolean
 }
 
 export interface AuthState {

@@ -34,6 +34,13 @@ const routes: RouteRecordRaw[] = [
   },
 
   {
+    // Accounts that require a passkey and haven't saved one yet land here.
+    path: '/passkey-setup',
+    name: 'passkey-setup',
+    component: () => import('@/views/PasskeySetupView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/forgot-password',
     name: 'forgot-password',
     component: () => import('@/views/ForgotPasswordView.vue'),
@@ -114,6 +121,13 @@ router.beforeEach(async (to, _from, next) => {
   // loadFromStorage renews a short-lived access token (or drops an ended
   // session), so isAuthenticated below is accurate.
   await authStore.loadFromStorage()
+
+  // A session that must save a passkey can't do anything else yet (the API
+  // enforces this too); send it to the setup page.
+  const passkeyExempt = ['passkey-setup', 'login', 'forgot-password', 'reset-password']
+  if (authStore.passkeySetupRequired && !passkeyExempt.includes(String(to.name))) {
+    return next({ name: 'passkey-setup', query: { redirect: to.fullPath } })
+  }
 
   // Role checks here are UX only; the API enforces permissions.
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {

@@ -11,6 +11,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^14.0.0",
     "@tailwindcss/vite": "^4.2.4",
     "axios": "^1.7.0",
     "pinia": "^2.2.0",

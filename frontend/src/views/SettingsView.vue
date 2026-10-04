@@ -6,6 +6,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
+import PasskeyManager from '@/components/PasskeyManager.vue'
 import { SUPPORTED_LOCALES, setLocale } from '@/i18n'
 import type { Locale } from '@/i18n'
 
@@ -76,6 +77,11 @@ function logout() {
               {{ t(`language-toggle__option--${option}`) }}
             </button>
           </div>
+        </section>
+
+        <section v-if="user?.passkey_required || user?.is_staff" class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <h2 class="text-lg font-semibold text-slate-950">{{ t('passkey-manager__title') }}</h2>
+          <PasskeyManager class="mt-1" />
         </section>
 
         <section class="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">

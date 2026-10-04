@@ -11,6 +11,9 @@ cryptography>=42
 # Database & Filters
 django-filter>=25.0
 
+# Passkeys (WebAuthn) for accounts with passkey_required
+webauthn>=3.0
+
 # Background Tasks (optional, enable if needed)
 # celery>=5.4
 # redis>=5.0

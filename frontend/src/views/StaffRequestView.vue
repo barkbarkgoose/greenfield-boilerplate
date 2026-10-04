@@ -287,7 +287,7 @@ const labelClass = 'block text-sm font-medium text-slate-700'
             <p v-if="retryError" class="mt-2 text-sm text-red-600">{{ retryError }}</p>
             <p class="mt-2 text-xs text-slate-500">
               The customer sees this same estimate. Recalculate after adding prices in the
-              <a href="/admin/intake/partpriceexample/" class="underline hover:text-slate-700">price table</a>.
+              <a :href="`${request.admin_url}intake/partpriceexample/`" class="underline hover:text-slate-700">price table</a>.
             </p>
           </section>
 

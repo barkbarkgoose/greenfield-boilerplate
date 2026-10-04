@@ -24,3 +24,10 @@ DATABASES = {
 # Message threads are off by default for launch; the tests cover them on, and
 # turn them off explicitly where that's what's being tested.
 INTAKE_MESSAGING_ENABLED = True
+
+ADMIN_URL = "admin/"
+ADMIN_URL_IS_RANDOM = False
+
+SITE_URL = "https://shop.example"
+PASSKEY_RP_ID = "shop.example"
+PASSKEY_ORIGINS = ["https://shop.example"]

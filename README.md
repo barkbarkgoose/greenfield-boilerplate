@@ -193,6 +193,44 @@ Django admin). Customers create accounts at `/register`. Forgotten passwords are
 reset from the "Forgot password?" link on the sign-in page; you can also set one in the
 Django admin.
 
+### Django admin address
+
+The Django admin lives at `ADMIN_URL` (env or keychain, e.g. `back-office-7f3k2q/`).
+Set it to something hard to guess in each environment. Unset, the address is random
+and changes every time the server starts; it's printed in the server log
+("Django admin for this run: /admin-…/"). With several server processes (gunicorn
+workers) each picks its own random address, so set `ADMIN_URL` wherever you actually
+use the admin. In development the Vite proxy forwards `/admin*`, which covers the
+random default; a custom `ADMIN_URL` is reachable on the backend port directly
+(e.g. `http://localhost:8800/back-office-7f3k2q/`).
+
+### Passkeys
+
+Any account can be made to require a passkey after its password. Tick
+**Passkey required** on the user in the Django admin (Sign-in security), or:
+
+```bash
+python manage.py reset_passkeys you@example.com --on    # require a passkey
+python manage.py reset_passkeys you@example.com         # lost it: delete passkeys, set up a new one at next sign-in
+python manage.py reset_passkeys you@example.com --off   # delete passkeys and stop requiring one
+```
+
+- **First sign-in after turning it on:** password as usual, then a "Set up your passkey"
+  page. Nothing else works until a passkey is saved (the API enforces this too).
+- **After that:** password, then the passkey prompt (Bitwarden, a phone, a security
+  key). No session is issued until the passkey checks out. Settings → Passkeys adds a
+  backup or removes one; the last one can't be removed while it's required.
+- **Each environment has its own passkeys.** A passkey belongs to the site's domain
+  (`PASSKEY_RP_ID`, taken from `SITE_URL`) and that environment's database, so you save
+  one for localhost, one for staging and one for production. Bitwarden shows the
+  domain on each.
+- **Off switch:** `PASSKEYS_ENABLED=False` ignores the requirement site-wide (e.g. if it
+  gives you grief in development). Per-user flags and saved passkeys are kept.
+- `SITE_URL` must be the exact address you open the site at (scheme, host and port),
+  or passkeys won't verify. Override with `PASSKEY_RP_ID` / `PASSKEY_ORIGINS` if needed.
+- The Django admin login is still password-only; keep `ADMIN_URL` hard to guess.
+- Code: `backend/apps/users/passkeys.py`, `frontend/src/services/passkeys.ts`.
+
 Every page shares one header (`SiteHeader.vue`) and footer, signed in or not. Signed-in
 people get an account menu; staff see "Dashboard" where customers see "My garage". A guest
 who taps "My garage" gets a dialog explaining the garage, with buttons to create an
@@ -303,7 +341,7 @@ on the confirmation screen and their request page, with the zero-markup promise.
 table has at least one row, the feature stays off.
 
 Maintain the table in a spreadsheet and import it, or edit rows in the Django admin
-(`/admin/intake/partpriceexample/`):
+(`<ADMIN_URL>/intake/partpriceexample/`, linked from each request's parts estimate):
 
 ```bash
 cd backend

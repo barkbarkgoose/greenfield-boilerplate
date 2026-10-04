@@ -132,6 +132,8 @@ export interface StaffRequestDetail extends RequestDetail {
   contact_consent: boolean
   marketing_consent: boolean
   consent_at: string | null
+  // Django admin base path (ADMIN_URL), e.g. "/back-office-7f3k2q/".
+  admin_url: string
 }
 
 export interface StaffRequestUpdate {
