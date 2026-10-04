@@ -69,7 +69,7 @@ Ask Claude to make these. Each is small.
   `/favicon.ico`, etc. at the site root, so Vite's default `base: '/'` keeps working.
 - Add a catch-all URL **last** in `config/urls.py` that returns `frontend_dist/index.html`
   for anything that isn't `api/`, `admin/` or `static/`. That's the "SPA fallback": it
-  lets `/book`, `/es/book` and `/account/requests/3` load on refresh. It also covers
+  lets `/order`, `/es/order` and `/account/orders/3` load on refresh. It also covers
   the `/es/*` hosting requirement in the README's Translations section.
 - Django admin CSS: run `collectstatic` during the image build (it goes to
   `STATIC_ROOT`, and WhiteNoise serves it at `/static/`).
@@ -126,10 +126,9 @@ CMD ["./start.sh"]
 
 (Check the `WORKDIR` and lockfile names against the repo when implementing.)
 
-**Gunicorn and the parts-estimate thread:** parts estimates run in a background thread
-after a booking (`PARTS_ESTIMATE_ASYNC`). That works under gunicorn's default sync
-workers, because the thread finishes on its own after the response. Polling for live
-chat (every 10s per open page) is light. Two workers are plenty for a preview.
+**Gunicorn:** requests are short (routing an order is a few queries against the
+service-area file and the day's loads), so gunicorn's default sync workers are fine.
+Polling for live chat (every 10s per open page, when messaging is on) is light. Two workers are plenty for a preview.
 
 ### 2f. `fly.toml` (repo root), roughly
 
@@ -220,7 +219,7 @@ to `claude/**`.
 
 ## 3. Keeping it private
 
-A preview shouldn't be public: it has a working booking form, the admin login and
+A preview shouldn't be public: it has a working order form, the admin login and
 whatever test data you enter. Options, best first:
 
 ### Option A: Cloudflare Access (recommended if you have, or will buy, a domain)
@@ -310,7 +309,7 @@ is less work for about the same money.
 It doesn't fit this project, for two reasons:
 
 1. **Static files only.** Pages can serve the built Vue app, but not Django. The
-   booking form, estimates, garage, invoices and dashboard all need the backend running
+   order form, quotes, my orders, invoices and dashboard all need the backend running
    somewhere else, which brings back the split setup (CORS, an API URL baked in at
    build time) from section 5.
 2. **Public.** Pages sites are visible to anyone with the URL, even from a private repo.

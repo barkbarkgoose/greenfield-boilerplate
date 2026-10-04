@@ -100,7 +100,7 @@ boilerplate/
 │   │   └── settings/     # base.py, local.py, production.py
 │   ├── apps/
 │   │   ├── users/       # Custom User model, JWT auth, password reset
-│   │   ├── intake/      # The mechanic site: bookings, garage, invoices, staff
+│   │   ├── intake/      # Delivery site: products, service area, dispatch, orders, invoices, staff
 │   │   └── organizations/  # migration stub only (see Key Features)
 │   └── manage.py
 └── frontend/
@@ -152,46 +152,72 @@ uv run --with-requirements requirements.txt python -m pytest
 | `/api/v1/auth/refresh/` | POST | No | Refresh access token |
 | `/api/v1/auth/password-reset/` | POST | No | Email a reset link (same answer whether or not the email exists; 5/hour) |
 | `/api/v1/auth/password-reset/confirm/` | POST | No | Set a new password with the link's `uid` + `token` |
-| `/api/v1/intake/catalog/` | GET | No | Services, prices, bundles, booking policy |
-| `/api/v1/intake/estimate/` | POST | No | Price a set of services for a date; also returns a parts estimate if `vehicle_type` is given |
-| `/api/v1/intake/requests/` | POST | Optional | Submit a booking or contact request (10/hour per IP) |
-| `/api/v1/intake/requests/parts-estimate/` | POST | Claim token | Read a guest request's parts estimate |
-| `/api/v1/garage/vehicles/` | GET | Yes | Customer's vehicles with repair history |
-| `/api/v1/garage/vehicles/<id>/` | PATCH | Yes | Rename a vehicle (nickname) |
-| `/api/v1/garage/requests/` | GET | Yes | Customer's requests |
-| `/api/v1/garage/requests/<id>/` | GET | Yes | Request detail with messages |
-| `/api/v1/garage/requests/<id>/messages/` | POST | Yes | Add a note/question |
-| `/api/v1/garage/requests/<id>/updates/` | GET | Yes | New messages since `?after=<message id>`, plus `updated_at` (polled by the open page) |
-| `/api/v1/garage/claim/` | POST | Yes | Attach a guest request via its claim token |
-| `/api/v1/manage/summary/` | GET | Staff | Dashboard counts and upcoming appointments |
-| `/api/v1/manage/requests/` | GET | Staff | All requests; `status`, `q`, `unread`, `emergency`, `ordering`, `page` |
-| `/api/v1/manage/requests/<id>/` | GET/PATCH | Staff | Request detail / update status, appointment, notes |
-| `/api/v1/manage/requests/<id>/parts-estimate/` | POST | Staff | Recalculate a request's parts estimate |
-| `/api/v1/manage/requests/<id>/messages/` | POST | Staff | Reply to the customer (emails them) |
-| `/api/v1/manage/requests/<id>/updates/` | GET | Staff | New customer messages since `?after=<message id>` |
-| `/api/v1/manage/requests/<id>/invoice/` | GET/PUT/DELETE | Staff | The request's invoice (GET without one returns a draft from the requested jobs) |
-| `/api/v1/manage/requests/<id>/invoice/preview/` | POST | Staff | Price an invoice without saving it |
+| `/api/v1/intake/catalog/` | GET | No | Products, per-yard prices, delivery fees, delivery days |
+| `/api/v1/intake/estimate/` | POST | No | Coverage for a ZIP, routed loads and a price for `items` + `preferred_date` (120/hour) |
+| `/api/v1/intake/orders/` | POST | Optional | Submit an order or special request (10/hour per IP); books the order's loads |
+| `/api/v1/account/orders/` | GET | Yes | Customer's orders |
+| `/api/v1/account/orders/<id>/` | GET | Yes | Order detail with messages and published invoice |
+| `/api/v1/account/orders/<id>/messages/` | POST | Yes | Add a note/question (messaging on) |
+| `/api/v1/account/orders/<id>/updates/` | GET | Yes | New messages since `?after=<message id>`, plus `updated_at` |
+| `/api/v1/account/claim/` | POST | Yes | Attach a guest order via its claim token |
+| `/api/v1/manage/summary/` | GET | Staff | Dashboard counts and scheduled deliveries |
+| `/api/v1/manage/orders/` | GET | Staff | All orders; `status`, `q`, `unread`, `rush`, `needs_dispatch`, `ordering`, `page` |
+| `/api/v1/manage/orders/<id>/` | GET/PATCH | Staff | Order detail (with loads and the ZIP's yard distances) / update status, date, window, notes |
+| `/api/v1/manage/orders/<id>/replan/` | POST | Staff | Route the order again from scratch |
+| `/api/v1/manage/orders/<id>/loads/<load id>/` | PATCH | Staff | Move a load to another truck (`{"truck": id}`) or unassign it (`null`) |
+| `/api/v1/manage/orders/<id>/messages/` | POST | Staff | Reply to the customer (emails them) |
+| `/api/v1/manage/orders/<id>/updates/` | GET | Staff | New customer messages since `?after=<message id>` |
+| `/api/v1/manage/orders/<id>/invoice/` | GET/PUT/DELETE | Staff | The order's invoice (GET without one returns a draft from the order and its loads) |
+| `/api/v1/manage/orders/<id>/invoice/preview/` | POST | Staff | Price an invoice without saving it |
+| `/api/v1/manage/dispatch/?date=` | GET | Staff | One day's yards, stock, trucks and loads |
+| `/api/v1/manage/stock/<id>/` | PATCH | Staff | Flip a product in/out of stock at a yard |
+| `/api/v1/manage/trucks/<id>/` | PATCH | Staff | Take a truck out of service / back in |
+| `/api/v1/manage/trucks/<id>/days-off/` | POST/DELETE | Staff | Mark a truck off for a date (`DELETE ?date=` clears it) |
 
-## Mobile Mechanic Site
+## Dirt & Topsoil Delivery Site
+
+This branch turns the boilerplate's mobile-mechanic site into a dirt and topsoil delivery
+business. Accounts, passkeys, translations, the staff dashboard, invoices, consent, spam
+protection and emails carry over; products, the zip-code service area, yards, trucks and
+dispatch are new. **`docs/scheduling-and-dispatch.md`** explains routing in depth and
+plans the scheduling work that's deferred.
+
+### Try it locally
+
+```bash
+cd backend
+uv run python manage.py migrate
+uv run python manage.py seed_network        # 3 sample yards, 5 trucks, stock
+uv run python manage.py check_service_area  # validates data/service_area.json
+uv run python manage.py createsuperuser     # staff login for /dashboard
+```
+
+The sample service area is ~85 Denver-metro ZIP codes (e.g. `80202` Denver, `80002`
+Arvada; `80403` Golden is special-request only; `99999` is outside). Replace it with your
+own; see the doc above.
+
+The intake app's migrations were reset to a single `0001_initial` for this branch, so
+delete an old mechanic `db.sqlite3` before migrating.
 
 ### Pages
 
 | Path | Who | What |
 |------|-----|------|
-| `/` (`/es`) | Anyone | Landing page: services, labor prices, bundles, booking policy |
-| `/book` (`/es/book`) | Anyone | Intake form with live estimate; `?mode=callback` for "just contact me" |
-| `/account` | Customers | "My garage": each car with its repair history |
-| `/account/requests/:id` | Customers | Request details, appointment, invoice (plus a message thread when messaging is on) |
+| `/` (`/es`) | Anyone | Landing page: ZIP checker, products and prices, delivery pricing |
+| `/order` (`/es/order`) | Anyone | Order form with live coverage, routing and price; `?mode=callback` for a special request, `?product=<key>` to preselect |
+| `/account` | Customers | "My orders": open and past orders, "Order again" |
+| `/account/orders/:id` | Customers | Order details, delivery date, invoice (plus a message thread when messaging is on) |
 | `/settings` | Signed in | Profile and language |
 | `/forgot-password`, `/reset-password/:uid/:token` | Anyone | Request a reset link; the page the emailed link opens |
-| `/claim/:token` | Customers | Attaches a guest booking to the signed-in account |
-| `/dashboard` | Staff (`is_staff`) | Bookings dashboard: filters, search, unread, upcoming |
-| `/dashboard/requests/:id` | Staff | Manage status, appointment, odometer, private notes; build the invoice; reply |
+| `/claim/:token` | Customers | Attaches a guest order to the signed-in account |
+| `/dashboard` | Staff (`is_staff`) | Orders: filters, search, needs-dispatch / rush tiles, scheduled deliveries |
+| `/dashboard/orders/:id` | Staff | Status, delivery date and window, dispatch (reassign trucks, re-plan), invoice, notes |
+| `/dashboard/dispatch` | Staff | Day-by-day board: each yard's stock, each truck's loads and booked time, loads with no truck |
 
 Make yourself staff with `python manage.py createsuperuser` (or tick `is_staff` in the
-Django admin). Customers create accounts at `/register`. Forgotten passwords are
-reset from the "Forgot password?" link on the sign-in page; you can also set one in the
-Django admin.
+Django admin). Customers create accounts at `/register`. Yards, trucks and which products
+each yard carries are set up in the Django admin; daily switches (in/out of stock, truck
+in service, truck off for a day) are on the dispatch board.
 
 ### Django admin address
 
@@ -232,151 +258,122 @@ python manage.py reset_passkeys you@example.com --off   # delete passkeys and st
 - Code: `backend/apps/users/passkeys.py`, `frontend/src/services/passkeys.ts`.
 
 Every page shares one header (`SiteHeader.vue`) and footer, signed in or not. Signed-in
-people get an account menu; staff see "Dashboard" where customers see "My garage". A guest
-who taps "My garage" gets a dialog explaining the garage, with buttons to create an
-account or sign in (both come back to the garage afterwards).
+people get an account menu; staff see "Dashboard" where customers see "My orders". A guest
+who taps "My orders" gets a dialog explaining accounts, with buttons to create one or
+sign in (both come back to their orders afterwards).
 
-### Saved booking drafts
+### Ordering
 
-The booking form saves itself in the browser as it's filled in (services, vehicle,
-date, contact details and notes), so a refresh, a trip to another page or closing the
-tab doesn't lose it. It's stored in `localStorage` on that device only, removed once the
-request is sent, and expires after 14 days. The form shows "Picked up where you left
-off" with a "Clear the form" button when it restores one. Code: `utils/intakeDraft.ts`.
+1. **Where:** address and ZIP code. The ZIP is looked up in the service-area table as
+   it's typed: served ZIPs show "We deliver to {city}"; special-request and unlisted ZIPs
+   turn the form into a special request (staff quote those by hand).
+2. **What:** products by the cubic yard, with a "How much do I need?" calculator
+   (length × width × depth → yards, rounded up). Fill dirt has a 5-yard minimum.
+3. **When:** a delivery date (Monday–Saturday) and morning/afternoon/any. If trucks are
+   full that day the form says so and offers the next open date.
+4. **Drop spot:** where to dump it, with access tips.
+5. The sidebar shows the price: material, one delivery line per truckload, rush fee,
+   which yard(s) it ships from.
 
-### Invoices
-
-On a request's dashboard page, the **Invoice** section builds the verified bill:
-
-- **Work done:** tick catalog jobs on or off. They're repriced like a booking, so bundles,
-  free add-ons and the volume rate still apply. You decide whether the rush fee applies.
-- **Lines:** parts at what you actually paid, shipping, extra labor (hours × rate,
-  for "other" work) and adjustments (a negative price for a discount). "+ Parts from
-  estimate" pre-fills part lines from the parts estimate for you to correct.
-- **Note to the customer**, shown on the invoice.
-
-A live preview shows exactly what the customer will see. **Save draft** keeps it private;
-**Publish to customer** shows it in their garage as a verified invoice (optionally
-emailing it) and sets the request's final total to the invoice total. Edits after
-publishing are visible as soon as you save; **Unpublish** hides it again. Logic:
-`backend/apps/intake/invoicing.py`.
-
-### Contact consent
-
-Every request needs a phone number and a ticked box agreeing to be contacted by call,
-text or email **about that request**. A second, optional box opts in to occasional
-deals and maintenance reminders ("I promise not to spam you, and this isn't
-automated"). Each request stores `contact_consent`, `marketing_consent`,
-`consent_at` and `consent_version`. Staff see both on the request page and in the
-new-request email; staff can't change them.
-
-- **Changing the checkbox wording:** edit `intake-consent__*` in both
-  `frontend/src/i18n/locales/*.json` and bump `CONSENT_VERSION` in
-  `backend/apps/intake/serializers.py`, so each request records which wording it agreed to.
-- **Promotions list:** Django admin → Service requests → filter "Marketing consent: Yes"
-  → select all → action "Export contacts (CSV)". Only text or email people who opted
-  in, and honor STOP replies.
-
-The contact box only covers messages about that request. Promotions need the separate,
-optional box, and the contact box doesn't cover them.
-
-### Messaging (off for launch)
-
-The message thread on request pages, and the live-update polling that comes with it,
-is **off by default**: customers call or text instead, and emails cover confirmations,
-status changes and invoices. The code, data and tests stay in place. To turn it back
-on, set `INTAKE_MESSAGING_ENABLED=1` (env or keychain) and restart. The threads, the
-dashboard's "Unread messages" tile and the polling then reappear on their own. When
-on, an open request page checks for new messages every 10 seconds while the tab is
-visible. `docs/realtime-messaging.md` covers that, and instant alternatives.
-
-Some customer-facing copy was reworded so it doesn't promise on-site messaging (the
-sign-in/sign-up intros, the guest confirmation, the garage dialog, the confirmation
-email). Revisit those when turning messaging back on.
-
-### How bookings reach a customer's garage
-
-Bookings made while signed in go straight to the customer's garage, matched to a car by
-VIN. Guest bookings get a one-time claim link (on the confirmation screen and in the
-confirmation email). Opening it while signed in moves the booking into that account.
-Bookings are deliberately *not* linked by email address, because signup doesn't verify
-email and anyone could otherwise register with someone else's address to see their history.
+Submitting books the order's loads on the requested date (so the next quote sees those
+trucks as busier) and emails you and the customer. Nothing is charged online. If routing
+found no truck or no stock, the order is still taken and flagged for staff.
 
 ### Pricing
 
-Pricing lives in one place, `backend/apps/intake/pricing.py`. Edit the business inputs at
-the top (target rate, insurance reserve, drive time, emergency fee, lead time) and each
-service's labor hours; the site and stored quotes follow. With the defaults, labor bills at
-$55/hr ($50 target + $5 insurance), each visit adds a $45 service call fee for drive time,
-jobs within 7 days add a $75 emergency fee, and pads/rotors/suspension on the same axle are
-discounted by the labor hours they share. On top of that:
+Pricing lives in `backend/apps/intake/pricing.py`: per-yard product prices at the top,
+then the delivery rules. With the defaults, each truckload costs $75 for the first 10 miles
+from the yard it ships from plus $3.50 a mile after that (rounded up to $5), delivery today
+or tomorrow adds a $50 rush fee per order, and sales tax (`SALES_TAX_RATE`) is 0 until you
+set it. Which yard and how many loads come from dispatch, so the price follows the
+routing.
 
-- **Free add-ons:** oil change and air filter labor is free when the rest of the visit is
-  2+ hours (`FREE_ADDON_KEYS`, `FREE_ADDON_MIN_HOURS`).
-- **Big-job rate:** once labor (after bundles, before fees) passes $200, further labor bills
-  at $25/hr (`VOLUME_THRESHOLD`, `VOLUME_RATE`).
+### Dispatch
 
-Labor estimates exclude parts; see parts estimates below.
+`backend/apps/intake/dispatch.py` splits each product into truckloads and picks a yard and
+truck for each: yards listed for the ZIP that stock the product, trucks running that day
+with enough time left, preferring the least total truck time. Staff can move any load to
+another truck, or re-plan after fixing stock or trucks. Changing an order's delivery date
+moves its loads (and their trucks) to that day. The full rules, the zip-table workflow
+(`build_service_area`, `check_service_area`, locked entries) and the deferred scheduler
+plan are in `docs/scheduling-and-dispatch.md`.
 
-### Parts estimates (your price table)
+### Saved order drafts
 
-Parts estimates come from real prices you collect, stored as **price examples**: one row
-per job and vehicle type (sedan, crossover, SUV, truck, European), optionally for a specific
-make. `price` is the parts cost for one unit of the job: one axle for brakes and suspension,
-the whole job otherwise (e.g. oil + filter).
+The order form saves itself in the browser as it's filled in (address, ZIP, products,
+date, drop spot, contact details and notes), so a refresh, a trip to another page or
+closing the tab doesn't lose it. It's stored in `localStorage` on that device only,
+removed once the order is sent, and expires after 14 days. The form shows "Picked up where
+you left off" with a "Clear the form" button when it restores one. Code:
+`utils/orderDraft.ts`. Signed-in customers can also start from an earlier order ("Order
+again" → `/order?from=<id>`).
 
-For each job on a booking, the estimate is the **min / median / max** of the best-matching
-examples: same make and type first, then same make, then same type. Jobs with no match are
-shown as "quoted separately". No AI model is involved.
+### Invoices
 
-The customer can pick their own vehicle type on the booking form before submitting (no VIN
-needed) to preview a parts range alongside the labor estimate; that choice is also what gets
-saved, so the VIN decode at submission won't override it. If they leave it blank, the vehicle
-type comes from the VIN decode instead (European make, then pickup / SUV / car body, with
-SUVs split from crossovers by weight class) — and if that decode call itself fails,
-`apps/intake/data/make_vehicle_type_defaults.json` has a small best-effort fallback for a
-handful of makes with an unambiguous lineup (e.g. Ram is always a truck). You can change the
-vehicle type on the request page, which recalculates the estimate. Customers see the result
-on the confirmation screen and their request page, with the zero-markup promise. Until the
-table has at least one row, the feature stays off.
+On an order's dashboard page, the **Invoice** section builds the final bill:
 
-Maintain the table in a spreadsheet and import it, or edit rows in the Django admin
-(`<ADMIN_URL>/intake/partpriceexample/`, linked from each request's parts estimate):
+- **Material delivered:** cubic yards that actually went out, at catalog prices (order
+  minimums don't apply).
+- **Loads:** one row per truck trip with its miles, priced like the quote. They start from
+  the dispatched loads; "Reset to dispatched loads" puts them back. A warning shows when
+  the loads don't add up to the yards delivered.
+- **Other charges:** services (spreading), fees (wait time, a second dump spot) and
+  adjustments (a negative price for a discount). You decide whether the rush fee applies.
+- **Note to the customer**, shown on the invoice.
 
-```bash
-cd backend
-# Blank fill-in sheet: every job x vehicle type, with the price unit spelled out.
-cp apps/intake/data/part_prices_template.csv ~/part_prices.csv
-uv run python manage.py import_part_prices ~/part_prices.csv --replace   # CSV becomes the table
-uv run python manage.py export_part_prices > part_prices.csv             # back to a spreadsheet
-```
+A live preview shows exactly what the customer will see. **Save draft** keeps it private;
+**Publish to customer** shows it on their order page (optionally emailing it) and sets the
+order's final total to the invoice total. Logic: `backend/apps/intake/invoicing.py`.
 
-Columns: `service`, `vehicle_type`, `price`, and optionally `vehicle_make`, `part_brand`,
-`description`, `source`, `source_url`. Add as many rows per job as you like (several
-brands, several stores): more examples make better ranges. Rows without a price are skipped,
-and an import with any bad row imports nothing and lists what to fix.
+### Contact consent
 
-`apps/intake/data/part_prices_example.csv` has placeholder prices (two brands per job x
-vehicle type, so you get a real low/high range) to see the feature working end to end.
-Import it to try it out, then replace it with your own research:
-`uv run python manage.py import_part_prices apps/intake/data/part_prices_example.csv --replace`.
+Every order needs a phone number and a ticked box agreeing to be contacted by call, text
+or email **about that order**. A second, optional box opts in to occasional seasonal deals.
+Each order stores `contact_consent`, `marketing_consent`, `consent_at` and
+`consent_version`. Staff see both on the order page and in the new-order email; staff
+can't change them.
+
+- **Changing the checkbox wording:** edit `order-consent__*` in both
+  `frontend/src/i18n/locales/*.json` and bump `CONSENT_VERSION` in
+  `backend/apps/intake/serializers.py`, so each order records which wording it agreed to.
+- **Promotions list:** Django admin → Orders → filter "Marketing consent: Yes" → select all
+  → action "Export contacts (CSV)". Only text or email people who opted in, and honor STOP
+  replies.
+
+### Messaging (off for launch)
+
+The message thread on order pages, and the live-update polling that comes with it, is
+**off by default**: customers call or text instead, and emails cover confirmations, status
+changes and invoices. To turn it on, set `INTAKE_MESSAGING_ENABLED=1` (env or keychain)
+and restart. The threads, the dashboard's "Unread messages" tile and the polling then
+reappear on their own. `docs/realtime-messaging.md` covers the polling and instant
+alternatives.
+
+### How orders reach a customer's account
+
+Orders placed while signed in go straight to the customer's account. Guest orders get a
+one-time claim link (on the confirmation screen and in the confirmation email). Opening it
+while signed in moves the order into that account. Orders are deliberately *not* linked by
+email address, because signup doesn't verify email and anyone could otherwise register
+with someone else's address to see their history.
 
 ### Email
 
 | Event | Goes to |
 |-------|---------|
-| New booking / contact request | `INTAKE_NOTIFY_EMAILS` (you) and the customer (confirmation + claim link) |
+| New order / special request | `INTAKE_NOTIFY_EMAILS` (you, with the dispatch plan; subject flags `[RUSH]` and `[NEEDS DISPATCH]`) and the customer (confirmation + claim link) |
 | Customer adds a note (messaging on) | `INTAKE_NOTIFY_EMAILS` |
 | You reply (messaging on) | The customer |
-| You change status/appointment with "Email the customer" ticked | The customer |
+| You change status/date/window with "Email the customer" ticked | The customer |
 | You publish an invoice with "Email the invoice" ticked | The customer |
 | Someone requests a password reset | That account's email (in the language they used) |
 
 Local development prints emails to the backend console. For production, set `SITE_URL`,
-`INTAKE_NOTIFY_EMAILS`, `DEFAULT_FROM_EMAIL`, `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_HOST_USER`
-and put `EMAIL_HOST_PASSWORD` in the keychain (see `backend/.env.example`). Set
-`TIME_ZONE` (e.g. `America/Denver`) so appointment times in emails are in shop time.
-Emails are sent inline and failures are logged, never shown to the customer.
+`BUSINESS_NAME`, `INTAKE_NOTIFY_EMAILS`, `DEFAULT_FROM_EMAIL`,
+`EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_HOST_USER` and put `EMAIL_HOST_PASSWORD` in the keychain
+(see `backend/.env.example`). Set `TIME_ZONE` (e.g. `America/Denver`) so "today" and rush
+dates follow the yard's clock. Emails are sent inline and failures are logged, never shown
+to the customer.
 
 ### Spam protection
 
@@ -390,10 +387,10 @@ Emails are sent inline and failures are logged, never shown to the customer.
 
 Customers can use the site in English or Spanish. What's translated:
 
-- **Customer pages:** landing page, booking form, garage, request pages, invoices,
-  sign in/up, profile & settings, header/footer, parts estimate.
-- **Server text:** service names, deals, discount lines, error messages, email subjects.
-- **Customer emails:** sent in the language the customer booked in.
+- **Customer pages:** landing page, order form, my orders, order pages, invoices,
+  sign in/up, profile & settings, header/footer.
+- **Server text:** product names and descriptions, error messages, email subjects.
+- **Customer emails:** sent in the language the customer ordered in.
 
 Your side stays English: the staff dashboard, your notification emails (which say which
 language the customer used), and the Django admin. Messages customers type, and the
@@ -404,7 +401,7 @@ invoice lines and notes you type, are shown as written.
 | What | File(s) |
 |------|---------|
 | Page text | `frontend/src/i18n/locales/en.json`, `es.json` |
-| Server text (services, deals, errors, email subjects) | `backend/apps/intake/text/en.json`, `es.json` |
+| Server text (products, errors, email subjects) | `backend/apps/intake/text/en.json`, `es.json` |
 | Customer email bodies | `backend/apps/intake/templates/intake/email/customer_*.txt` (English) and `customer_*.es.txt` (Spanish) |
 | Business name, phone, email (not translated) | `frontend/src/config/business.ts`, `BUSINESS_NAME` setting |
 
@@ -412,23 +409,23 @@ invoice lines and notes you type, are shown as written.
 
 Keys say where the text appears: `block__element--modifier`.
 
-- **block:** the page section or component, e.g. `landing-hero`, `intake-vehicle`,
-  `garage-request`, `site-header`. Page sections carry the block as a CSS class
+- **block:** the page section or component, e.g. `landing-hero`, `order-location`,
+  `account-order`, `site-header`. Page sections carry the block as a CSS class
   (`<section class="landing-hero">`), so inspecting an element in the browser tells you
   which keys it uses.
-- **element:** the piece of text inside it, e.g. `title`, `vin-label`, `cta`.
-- **modifier** (optional): a variant, e.g. `--primary`, `--booking` / `--callback`, or a
-  data value like `--brake_pads` or `--scheduled`.
+- **element:** the piece of text inside it, e.g. `title`, `zip-label`, `cta`.
+- **modifier** (optional): a variant, e.g. `--primary`, `--delivery` / `--callback`, or a
+  data value like `--fill_dirt` or `--scheduled`.
 
-Examples: `intake-vehicle__vin-label`, `landing-hero__cta--primary`,
-`request-status__label--scheduled`, `service__name--brake_pads` (server).
+Examples: `order-location__zip-label`, `landing-hero__cta--primary`,
+`request-status__label--scheduled`, `product__name--fill_dirt` (server).
 
 Common blocks: `site-header`, `site-footer`, `app-nav`, `language-toggle`, `landing-*`,
-`intake-*` (booking form sections), `garage-*` (customer account), `auth-login`,
-`auth-register`, `parts-estimate`, `parts-policy`, `estimate-breakdown`,
-`message-thread`, `request-status`, `page-meta` (browser titles and descriptions).
-Server side: `service`, `bundle`, `deal`, `discount`, `vehicle-type`, `validation`,
-`email`, `email-status`.
+`order-*` (order form sections), `account-*` (customer account), `auth-login`,
+`auth-register`, `quote-breakdown`, `invoice-card`, `message-thread`, `request-status`,
+`page-meta` (browser titles and descriptions).
+Server side: `product`, `delivery-window`, `validation`, `email`, `email-status`,
+`email-invoice`.
 
 **Placeholders** use braces in both languages and must match: `"Hi {name}"` /
 `"Hola {name}"`. **Plurals** (page text only) are separated by `" | "`:
@@ -440,8 +437,9 @@ Server side: `service`, `bundle`, `deal`, `discount`, `vehicle-type`, `validatio
   it is? Search the JSON for the English text.
 - **Add text to a page:** add a key to both files and use `t('your-block__element')` in the
   component (`const { t } = useI18n()`).
-- **Add a service:** add it in `pricing.py`, then `service__name--<key>` and
-  `service__description--<key>` to both server text files.
+- **Add a product:** add it to `PRODUCTS` in `pricing.py`, then `product__name--<key>` and
+  `product__description--<key>` to both server text files, and a migration (the product
+  choices on `YardStock`/`OrderLoad` change). Then mark which yards carry it in the admin.
 - **Change an email:** edit both `customer_x.txt` and `customer_x.es.txt`.
 
 ### Reviewing translations in a spreadsheet
@@ -481,24 +479,24 @@ The frontend build also type-checks that `es.json` has every English key.
 3. Otherwise their browser language (Spanish browsers get Spanish).
 
 The frontend sends the language to the API (`Accept-Language`), so server text comes back
-in it. Each booking records its language (`ServiceRequest.language`), and customer emails
-use that language. Saved estimates store keys rather than text, so the same booking reads
-in Spanish for the customer and English for you.
+in it. Each order records its language (`Order.language`), and customer emails use that
+language. Saved quotes store keys rather than text, so the same order reads in Spanish
+for the customer and English for you.
 
 ### Spanish addresses (`/es/`) and search engines
 
-The landing page and booking form have Spanish addresses: `/es` and `/es/book`. Spanish
-visitors on `/` or `/book` are redirected to them, and the toggle switches between the
+The landing page and order form have Spanish addresses: `/es` and `/es/order`. Spanish
+visitors on `/` or `/order` are redirected to them, and the toggle switches between the
 two. Each page adds `hreflang` links (`en`, `es`, `x-default`) and a translated `<title>`
-and description, so search engines can index both versions. Signed-in pages (garage,
-requests) don't need separate addresses; they follow the saved language.
+and description, so search engines can index both versions. Signed-in pages (orders)
+don't need separate addresses; they follow the saved language.
 
 When you deploy:
 
 - **Serve the app for `/es` paths.** The host must return `index.html` for `/es` and
   `/es/*`, the same single-page-app fallback every other route needs (e.g. Netlify
   `/* /index.html 200`, nginx `try_files $uri /index.html`).
-- **Add both versions to your sitemap**: `/`, `/es`, `/book`, `/es/book`.
+- **Add both versions to your sitemap**: `/`, `/es`, `/order`, `/es/order`.
 - **Check Search Console** after launch. Google renders JavaScript, so the hreflang links
   and titles are picked up. If Spanish pages don't show up in results after a few weeks,
   prerendering the two public pages (e.g. `vite-plugin-ssg` or a prerender service) is the

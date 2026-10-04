@@ -12,7 +12,7 @@ from .i18n import current_language, t
 from .models import InvoiceLine, Order, OrderLoad, OrderMessage, Truck, TruckDayOff, YardStock
 
 # Bump when the consent checkbox wording changes (frontend locales
-# intake-consent__*), so each order records which wording was agreed to.
+# order-consent__*), so each order records which wording was agreed to.
 CONSENT_VERSION = "2026-10-04"
 
 

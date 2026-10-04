@@ -5,21 +5,21 @@
 
 ## What happens today
 
-An open request page checks the server every 10 seconds while the tab is visible:
+An open order page checks the server every 10 seconds while the tab is visible:
 
-- Customer page: `GET /api/v1/garage/requests/<id>/updates/?after=<last message id>`
-- Staff page: `GET /api/v1/manage/requests/<id>/updates/?after=<last message id>`
+- Customer page: `GET /api/v1/account/orders/<id>/updates/?after=<last message id>`
+- Staff page: `GET /api/v1/manage/orders/<id>/updates/?after=<last message id>`
 
-The response holds any newer messages and the request's `updated_at`. New messages are
+The response holds any newer messages and the order's `updated_at`. New messages are
 appended to the thread. If `updated_at` moved (status, appointment, invoice), the page
-reloads the request. Messages the viewer sees this way are marked read.
+reloads the order. Messages the viewer sees this way are marked read.
 
 | Piece | Where |
 |-------|-------|
-| Endpoints | `backend/apps/intake/views.py`: `_updates`, `MyRequestUpdatesView`, `StaffRequestUpdatesView` |
-| Rate limit | `garage_poll` in `config/settings/base.py` (1200/hour per customer) |
+| Endpoints | `backend/apps/intake/views.py`: `_updates`, `MyOrderUpdatesView`, `StaffOrderUpdatesView` |
+| Rate limit | `account_poll` in `config/settings/base.py` (1200/hour per customer) |
 | Polling loop | `frontend/src/composables/useLiveUpdates.ts` |
-| Used by | `CustomerRequestView.vue`, `StaffRequestView.vue` |
+| Used by | `CustomerOrderView.vue`, `StaffOrderView.vue` |
 
 Hidden tabs don't poll, and coming back to the tab checks right away. If the server
 fails or rate-limits, the wait doubles, up to 2 minutes. A reply shows up within about
@@ -48,8 +48,8 @@ What it takes:
    `daphne`) instead of a WSGI server like gunicorn. Under WSGI, each open stream ties up
    a whole worker.
 2. **A way to tell the stream about new messages.** Use Postgres `LISTEN/NOTIFY` (if
-   you're on Postgres) or Redis pub/sub. Whatever saves a `RequestMessage` (or changes a
-   request) publishes `{request_id}`; each open stream for that request wakes up and
+   you're on Postgres) or Redis pub/sub. Whatever saves a `OrderMessage` (or changes an
+   order) publishes `{order_id}`; each open stream for that order wakes up and
    sends the new rows.
 3. **An endpoint** like `GET /api/v1/garage/requests/<id>/events/` that returns a
    `StreamingHttpResponse` with `text/event-stream`, checks permissions exactly like
@@ -81,7 +81,7 @@ gain at this scale.
 ## Recommendation
 
 Stay on polling until it's a real problem. If you want replies to land faster first,
-lower `POLL_INTERVAL_MS` to 5 seconds and raise `garage_poll` to match. If you outgrow
+lower `POLL_INTERVAL_MS` to 5 seconds and raise `account_poll` to match. If you outgrow
 that, go with SSE (option 1): it reuses the same permission checks and the same
 frontend composable. Keep polling as the fallback.
 
