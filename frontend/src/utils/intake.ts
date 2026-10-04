@@ -16,6 +16,12 @@ export function formatMoney(value: string | number): string {
   })
 }
 
+// A low/high pair collapses to one amount when the table only had one match.
+export function formatMoneyRange(low?: string | number, high?: string | number): string {
+  if (low === undefined || high === undefined) return ''
+  return Number(low) === Number(high) ? formatMoney(low) : `${formatMoney(low)}–${formatMoney(high)}`
+}
+
 // YYYY-MM-DD in the browser's local time zone (what <input type="date"> uses).
 export function isoDateFromToday(days: number): string {
   const date = new Date()

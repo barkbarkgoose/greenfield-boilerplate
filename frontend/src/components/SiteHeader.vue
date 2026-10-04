@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The one header for every page, signed in or not. Signed-in people get an
-// account menu on the right; guests who tap "My garage" get a dialog that
-// points them to sign up or sign in instead of a bare login redirect.
+// account menu on the right; guests see a sign-in link there instead, and get
+// a dialog pointing them to sign up or sign in if they tap "My garage".
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
@@ -19,12 +19,23 @@ const isMenuOpen = ref(false)
 const menu = ref<HTMLElement | null>(null)
 const garageDialog = ref<InstanceType<typeof GarageSignInDialog> | null>(null)
 
+// Dashboard only ever lives in the avatar dropdown, so the top-level bar
+// looks the same for staff and customers; the garage shortcut button is
+// customer-only.
 const accountLink = computed(() =>
   authStore.isStaff
     ? { to: '/dashboard', label: t('site-header__nav-link--dashboard') }
     : { to: '/account', label: t('site-header__nav-link--garage') }
 )
-const accountLinkActive = computed(() => route.path.startsWith(authStore.isStaff ? '/dashboard' : '/account'))
+const garageLinkActive = computed(() => route.path.startsWith('/account'))
+const accountLinkActive = computed(() => route.path.startsWith(accountLink.value.to))
+
+// Pricing/Contact are anchors/query modes on shared routes rather than their
+// own paths, so matching the route name alone isn't enough to tell them apart.
+const pricingActive = computed(() => route.name === 'home' && route.hash === '#pricing')
+const contactActive = computed(() => route.name === 'book' && route.query.mode === 'callback')
+const activeLinkClass = 'bg-slate-800 text-white'
+const activeMenuItemClass = 'bg-slate-100 text-slate-900'
 
 const displayName = computed(() => authStore.user?.name || authStore.user?.email || t('app-nav__account-fallback'))
 const initials = computed(() => {
@@ -80,33 +91,52 @@ const menuItemClass =
       </router-link>
 
       <nav class="flex items-center gap-1 sm:gap-2">
-        <router-link :to="{ name: 'home', hash: '#pricing' }" :class="[linkClass, 'hidden md:block']">
+        <router-link
+          :to="{ name: 'home', hash: '#pricing' }"
+          :class="[linkClass, 'hidden md:block', pricingActive && activeLinkClass]"
+          :aria-current="pricingActive ? 'page' : undefined"
+        >
           {{ t('site-header__nav-link--pricing') }}
         </router-link>
-        <router-link :to="{ name: 'book', query: { mode: 'callback' } }" :class="[linkClass, 'hidden md:block']">
+        <router-link
+          :to="{ name: 'book', query: { mode: 'callback' } }"
+          :class="[linkClass, 'hidden md:block', contactActive && activeLinkClass]"
+          :aria-current="contactActive ? 'page' : undefined"
+        >
           {{ t('site-header__nav-link--contact') }}
         </router-link>
-        <!-- Guests get a button that opens the sign-in dialog instead of a link. -->
+        <!-- Garage shortcut is customer-only; staff reach the dashboard through the avatar menu instead, so the bar matches. -->
         <component
+          v-if="!authStore.isStaff"
           :is="authStore.isAuthenticated ? RouterLink : 'button'"
-          v-bind="authStore.isAuthenticated ? { to: accountLink.to } : { type: 'button', 'aria-haspopup': 'dialog' }"
+          v-bind="authStore.isAuthenticated ? { to: '/account' } : { type: 'button', 'aria-haspopup': 'dialog' }"
           class="site-header__garage-link flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium sm:px-3"
-          :class="accountLinkActive ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white'"
-          :aria-label="accountLink.label"
+          :class="garageLinkActive ? activeLinkClass : 'text-slate-300 hover:text-white'"
+          :aria-label="t('site-header__nav-link--garage')"
+          :aria-current="garageLinkActive ? 'page' : undefined"
           @click="openGarage"
         >
           <svg class="h-5 w-5 sm:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 10.5L12 4l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1v-9.5zM7 21v-7h10v7M7 17.5h10" />
           </svg>
-          <span class="hidden whitespace-nowrap sm:inline">{{ accountLink.label }}</span>
+          <span class="hidden whitespace-nowrap sm:inline">{{ t('site-header__nav-link--garage') }}</span>
         </component>
-        <LanguageToggle v-if="!authStore.isStaff" dark />
+        <LanguageToggle dark />
         <router-link
           :to="{ name: 'book' }"
           class="whitespace-nowrap rounded-lg bg-amber-400 px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:bg-amber-300 sm:px-4"
         >
           <span class="hidden sm:inline">{{ t('site-header__cta') }}</span>
           <span class="sm:hidden">{{ t('site-header__cta--short') }}</span>
+        </router-link>
+
+        <!-- Guests get a sign-in link where the avatar sits once signed in. -->
+        <router-link
+          v-if="!authStore.isAuthenticated"
+          :to="{ name: 'login' }"
+          :class="[linkClass, 'whitespace-nowrap']"
+        >
+          {{ t('site-header__nav-link--sign-in') }}
         </router-link>
 
         <div v-if="authStore.isAuthenticated" ref="menu" class="relative">
@@ -131,15 +161,37 @@ const menuItemClass =
             @keydown.esc="closeMenu"
           >
             <div class="border-b border-slate-100 px-3 py-3">
-              <p class="truncate text-sm font-semibold text-slate-900">{{ displayName }}</p>
+              <div class="flex items-center gap-2">
+                <p class="truncate text-sm font-semibold text-slate-900">{{ displayName }}</p>
+                <span v-if="authStore.isStaff" class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                  {{ t('app-nav__badge--staff') }}
+                </span>
+              </div>
               <p class="mt-0.5 truncate text-xs text-slate-500">{{ authStore.user?.email }}</p>
             </div>
             <div class="mt-2">
-              <router-link :to="accountLink.to" role="menuitem" :class="menuItemClass">{{ accountLink.label }}</router-link>
-              <router-link :to="{ name: 'home', hash: '#pricing' }" role="menuitem" :class="[menuItemClass, 'md:hidden']">
+              <router-link
+                :to="accountLink.to"
+                role="menuitem"
+                :class="[menuItemClass, accountLinkActive && activeMenuItemClass]"
+                :aria-current="accountLinkActive ? 'page' : undefined"
+              >
+                {{ accountLink.label }}
+              </router-link>
+              <router-link
+                :to="{ name: 'home', hash: '#pricing' }"
+                role="menuitem"
+                :class="[menuItemClass, 'md:hidden', pricingActive && activeMenuItemClass]"
+                :aria-current="pricingActive ? 'page' : undefined"
+              >
                 {{ t('site-header__nav-link--pricing') }}
               </router-link>
-              <router-link :to="{ name: 'book', query: { mode: 'callback' } }" role="menuitem" :class="[menuItemClass, 'md:hidden']">
+              <router-link
+                :to="{ name: 'book', query: { mode: 'callback' } }"
+                role="menuitem"
+                :class="[menuItemClass, 'md:hidden', contactActive && activeMenuItemClass]"
+                :aria-current="contactActive ? 'page' : undefined"
+              >
                 {{ t('site-header__nav-link--contact') }}
               </router-link>
               <router-link to="/settings" role="menuitem" :class="menuItemClass">{{ t('app-nav__menu-item--settings') }}</router-link>

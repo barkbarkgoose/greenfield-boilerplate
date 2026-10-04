@@ -52,7 +52,12 @@ function logout() {
               {{ initials }}
             </span>
             <div class="min-w-0">
-              <h2 class="truncate text-xl font-semibold text-slate-950">{{ user?.name || t('settings-page__profile-fallback') }}</h2>
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="truncate text-xl font-semibold text-slate-950">{{ user?.name || t('settings-page__profile-fallback') }}</h2>
+                <span v-if="user?.is_staff" class="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                  {{ t('app-nav__badge--staff') }}
+                </span>
+              </div>
               <p class="truncate text-sm text-slate-500">{{ user?.email }}</p>
             </div>
           </div>

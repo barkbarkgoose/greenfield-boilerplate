@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PartsEstimate } from '@/types/intake'
-import { formatDate, formatMoney } from '@/utils/intake'
+import { formatDate, formatMoney, formatMoneyRange } from '@/utils/intake'
 
 const props = defineProps<{
   estimate: PartsEstimate
@@ -24,10 +24,7 @@ const allIn = computed(() => {
   }
 })
 
-function range(low?: string | number, high?: string | number) {
-  if (low === undefined || high === undefined) return ''
-  return Number(low) === Number(high) ? formatMoney(low) : `${formatMoney(low)}–${formatMoney(high)}`
-}
+const range = formatMoneyRange
 </script>
 
 <template>

@@ -17,7 +17,7 @@ import {
   fetchGuestPartsEstimate,
   submitServiceRequest
 } from '@/services/intake'
-import { VIN_PATTERN, formatDate, formatMoney, isoDateFromToday, normalizeVin } from '@/utils/intake'
+import { VIN_PATTERN, formatDate, formatMoney, formatMoneyRange, isoDateFromToday, normalizeVin } from '@/utils/intake'
 import { DRAFT_FIELDS, clearDraft, isEmptyDraft, loadDraft, saveDraft } from '@/utils/intakeDraft'
 import type {
   Catalog,
@@ -227,6 +227,18 @@ watch(
 
 onBeforeUnmount(() => clearTimeout(estimateTimer))
 
+// Labor + parts combined, for the Total section's "all-in" range.
+const allInEstimate = computed(() => {
+  const parts = estimate.value?.parts_estimate
+  if (!estimate.value || !parts || parts.status !== 'ready') return null
+  const labor = Number(estimate.value.total)
+  return {
+    low: labor + Number(parts.low ?? 0),
+    typical: labor + Number(parts.typical ?? 0),
+    high: labor + Number(parts.high ?? 0)
+  }
+})
+
 const scheduling = computed(() => {
   if (!form.preferred_date || !catalog.value) return null
   const today = new Date(`${minDate}T00:00:00`)
@@ -402,6 +414,23 @@ async function loadCatalog() {
 }
 
 watch(locale, loadCatalog)
+
+// Phones get a bar pinned to the bottom of the viewport linking down to the
+// full breakdown; once that breakdown scrolls into view the bar is both
+// redundant and sits on top of the page footer, so hide it there.
+const estimateSection = ref<HTMLElement | null>(null)
+const estimateSectionVisible = ref(false)
+let estimateSectionObserver: IntersectionObserver | null = null
+
+watch(estimateSection, (el) => {
+  estimateSectionObserver?.disconnect()
+  if (!el) return
+  estimateSectionObserver = new IntersectionObserver(([entry]) => {
+    estimateSectionVisible.value = entry.isIntersecting
+  })
+  estimateSectionObserver.observe(el)
+})
+onBeforeUnmount(() => estimateSectionObserver?.disconnect())
 
 const inputClass =
   'mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40'
@@ -778,13 +807,24 @@ const labelClass = 'block text-sm font-medium text-slate-700'
           </div>
 
           <!-- Estimate sidebar -->
-          <aside id="estimate" class="intake-estimate relative scroll-mt-20 pb-16 lg:sticky lg:top-24 lg:self-start lg:pb-0">
+          <aside
+            id="estimate"
+            ref="estimateSection"
+            class="intake-estimate relative scroll-mt-20 pb-16 lg:sticky lg:top-24 lg:self-start lg:pb-0"
+          >
             <div class="rounded-2xl bg-slate-900 p-6 text-white shadow-lg">
               <template v-if="mode === 'booking'">
                 <h2 class="text-lg font-semibold">{{ t('intake-estimate__title') }}</h2>
                 <p v-if="selections.length === 0" class="mt-3 text-sm text-slate-400">{{ t('intake-estimate__empty') }}</p>
                 <div v-else-if="estimate" class="mt-4 text-sm" :class="estimating && 'opacity-60'">
-                  <ul class="space-y-2">
+                  <!-- Labor -->
+                  <div class="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                    <svg class="h-4 w-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a4 4 0 00-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 005.2-5.4l-2.6 2.6-2.4-.6-.6-2.4 2.6-2.6z" />
+                    </svg>
+                    {{ t('intake-estimate__section--labor') }}
+                  </div>
+                  <ul class="mt-3 space-y-2">
                     <li v-for="item in estimate.line_items" :key="item.key" class="flex justify-between gap-3">
                       <span class="text-slate-300">
                         {{ item.name }}<span v-if="item.quantity > 1"> × {{ item.quantity }}</span>
@@ -804,30 +844,69 @@ const labelClass = 'block text-sm font-medium text-slate-700'
                       <span>{{ formatMoney(estimate.emergency_fee) }}</span>
                     </li>
                   </ul>
-                  <div class="mt-4 flex items-baseline justify-between border-t border-slate-700 pt-4">
-                    <span class="font-semibold">{{ t('estimate-breakdown__total') }}</span>
-                    <span class="text-2xl font-bold text-amber-400">
-                      {{ formatMoney(estimate.total) }}<span v-if="estimate.needs_custom_quote" class="text-base">+</span>
+                  <div class="mt-3 flex items-baseline justify-between border-t border-slate-700 pt-3">
+                    <span class="font-semibold">{{ t('intake-estimate__labor-subtotal') }}</span>
+                    <span class="text-lg font-bold">
+                      {{ formatMoney(estimate.total) }}<span v-if="estimate.needs_custom_quote" class="text-sm">+</span>
                     </span>
                   </div>
                   <p class="mt-1 text-xs text-slate-400">{{ t('intake-estimate__labor-hours', { hours: estimate.labor_hours }) }}</p>
 
-                  <div v-if="estimate.parts_estimate" class="mt-4 rounded-2xl bg-white p-4 text-left ring-1 ring-slate-200">
+                  <!-- Parts -->
+                  <div class="mt-6 flex items-center gap-2 text-sm font-semibold text-slate-200">
+                    <svg class="h-4 w-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 1.994-4.705 2.598-7.189.049-.201-.1-.395-.306-.395H5.106M7.5 14.25L5.106 5.25M7.5 14.25L5.25 18.75m0 0a.75.75 0 100 1.5.75.75 0 000-1.5zM19.5 18.75a.75.75 0 100 1.5.75.75 0 000-1.5z" />
+                    </svg>
+                    {{ t('intake-estimate__section--parts') }}
+                  </div>
+                  <div v-if="estimate.parts_estimate" class="mt-3 rounded-2xl bg-white p-4 text-left ring-1 ring-slate-200">
                     <PartsEstimateCard
                       :estimate="estimate.parts_estimate"
-                      :labor-total="estimate.total"
                       :vehicle-label="[form.vehicle_year, form.vehicle_make, form.vehicle_model].filter(Boolean).join(' ')"
                     />
                   </div>
+                  <p v-else class="mt-3 text-sm text-slate-400">
+                    {{ t('parts-policy__short') }}
+                    {{ form.vehicle_type ? t('intake-estimate__note--quoted-after-vin') : t('intake-estimate__note--pick-vehicle-type') }}
+                  </p>
+
+                  <!-- Total -->
+                  <div class="mt-6 flex items-center gap-2 text-sm font-semibold text-slate-200">
+                    <svg class="h-4 w-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M15.75 15.75V18M8.25 15.75h.008v.008H8.25v-.008zm0-3h.008v.008H8.25v-.008zm3 3h.008v.008h-.008v-.008zm0-3h.008v.008h-.008v-.008zm3-3h.008v.008h-.008V9.75zM9.75 3v2.25M14.25 3v2.25M6.75 21A2.25 2.25 0 014.5 18.75V6.75A2.25 2.25 0 016.75 4.5h10.5A2.25 2.25 0 0119.5 6.75v12a2.25 2.25 0 01-2.25 2.25H6.75z"
+                      />
+                    </svg>
+                    {{ t('intake-estimate__section--total') }}
+                  </div>
+                  <ul class="mt-3 space-y-2">
+                    <li class="flex justify-between gap-3">
+                      <span class="text-slate-300">{{ t('intake-estimate__labor-subtotal') }}</span>
+                      <span>{{ formatMoney(estimate.total) }}</span>
+                    </li>
+                    <li v-if="estimate.parts_estimate?.status === 'ready'" class="flex justify-between gap-3">
+                      <span class="text-slate-300">{{ t('intake-estimate__parts-line') }}</span>
+                      <span>{{ formatMoneyRange(estimate.parts_estimate.low, estimate.parts_estimate.high) }}</span>
+                    </li>
+                  </ul>
+                  <div class="mt-3 flex items-baseline justify-between border-t border-slate-700 pt-3">
+                    <span class="font-semibold">{{ allInEstimate ? t('parts-estimate__all-in-label') : t('estimate-breakdown__total') }}</span>
+                    <span class="text-2xl font-bold text-amber-400">
+                      <template v-if="allInEstimate">{{ formatMoneyRange(allInEstimate.low, allInEstimate.high) }}</template>
+                      <template v-else>{{ formatMoney(estimate.total) }}</template>
+                      <span v-if="estimate.needs_custom_quote" class="text-base">+</span>
+                    </span>
+                  </div>
+                  <p v-if="allInEstimate" class="mt-1 text-right text-xs text-slate-400">
+                    {{ t('parts-estimate__typical', { amount: formatMoney(allInEstimate.typical) }) }}
+                  </p>
                 </div>
                 <p v-else-if="estimating" class="mt-3 text-sm text-slate-400">{{ t('intake-estimate__calculating') }}</p>
                 <p v-else class="mt-3 text-sm text-slate-400">{{ t('intake-estimate__error') }}</p>
 
                 <ul class="mt-5 space-y-2 border-t border-slate-700 pt-4 text-xs text-slate-400">
-                  <li v-if="!estimate?.parts_estimate">
-                    {{ t('parts-policy__short') }}
-                    {{ form.vehicle_type ? t('intake-estimate__note--quoted-after-vin') : t('intake-estimate__note--pick-vehicle-type') }}
-                  </li>
                   <li>{{ t('intake-estimate__note--preferences') }}</li>
                   <li>{{ t('intake-estimate__note--short-notice') }}</li>
                   <li v-if="selected.other">{{ t('intake-estimate__note--other') }}</li>
@@ -863,7 +942,7 @@ const labelClass = 'block text-sm font-medium text-slate-700'
 
           <!-- Phones: keep the running total visible; the full breakdown sits at the bottom. -->
           <a
-            v-if="mode === 'booking' && estimate"
+            v-if="mode === 'booking' && estimate && !estimateSectionVisible"
             href="#estimate"
             class="intake-mobile-total fixed inset-x-0 bottom-0 z-20 flex items-center justify-between border-t border-slate-700 bg-slate-900 px-4 py-3 text-white lg:hidden"
           >
