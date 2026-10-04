@@ -213,9 +213,9 @@ class TestPasskeyFlow:
         assert data["access"] and "passkey_setup_required" not in data
         assert authed(data["access"]).get("/api/v1/manage/summary/").status_code == 200
 
-    def test_setup_session_cannot_reach_the_garage(self, staff):
+    def test_setup_session_cannot_reach_orders(self, staff):
         limited = authed(login(APIClient()).json()["access"])
-        assert limited.get("/api/v1/garage/requests/").status_code == 403
+        assert limited.get("/api/v1/account/orders/").status_code == 403
 
 
 @pytest.mark.django_db

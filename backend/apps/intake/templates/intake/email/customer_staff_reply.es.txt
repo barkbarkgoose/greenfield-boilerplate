@@ -1,11 +1,11 @@
-{% autoescape off %}Hola {{ req.name }}:
+{% autoescape off %}Hola {{ order.name }}:
 
-{{ business_name }} respondió a tu solicitud #{{ req.id }}{% if req.vehicle_label %} ({{ req.vehicle_label }}){% endif %}:
+{{ business_name }} respondió sobre tu pedido #{{ order.id }}:
 
 {{ message.body }}
 
-{% if req.customer_id %}Ve la conversación completa o responde aquí:
-{{ site_url }}/account/requests/{{ req.id }}?lang=es{% else %}Solo responde a este correo para contestar.{% endif %}
+{% if order.customer_id %}Ve la conversación completa o responde aquí:
+{{ site_url }}/account/orders/{{ order.id }}?lang=es{% else %}Solo responde a este correo para contestar.{% endif %}
 
 {{ business_name }}
 {% endautoescape %}

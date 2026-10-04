@@ -1,21 +1,21 @@
-{% autoescape off %}Hola {{ req.name }}:
+{% autoescape off %}Hola {{ order.name }}:
 
-Esta es la factura final de tu solicitud #{{ req.id }}{% if req.vehicle_label %} ({{ req.vehicle_label }}){% endif %}.
-{% if labor.line_items %}
-Mano de obra:
-{% for item in labor.line_items %}  - {{ item.name }}{% if item.quantity > 1 %} x{{ item.quantity }}{% endif %}: {% if item.quote_required %}ver abajo{% else %}${{ item.amount }}{% endif %}
-{% endfor %}{% for d in labor.discounts %}  - {{ d.name }}: -${{ d.amount }}
-{% endfor %}  - Visita a domicilio (traslado): ${{ labor.service_call_fee }}
-{% if labor.emergency_fee != "0.00" %}  - Cargo por urgencia (misma semana): ${{ labor.emergency_fee }}
+Esta es la factura final de tu pedido #{{ order.id }}.
+{% if priced.line_items %}
+Entregado:
+{% for item in priced.line_items %}  - {{ item.name }}: {{ item.quantity }} yd x ${{ item.unit_price }} = ${{ item.amount }}
+{% endfor %}{% if priced.tax != "0.00" %}  - Impuesto sobre la venta: ${{ priced.tax }}
+{% endif %}{% for load in priced.deliveries %}  - Entrega, {{ load.quantity }} yd de {{ load.product_name|lower }} ({{ load.miles }} mi): ${{ load.fee }}
+{% endfor %}{% if priced.rush_fee != "0.00" %}  - Entrega urgente: ${{ priced.rush_fee }}
 {% endif %}{% endif %}{% if lines %}
-Piezas y otros cargos (piezas al costo, sin margen):
+Otros cargos:
 {% for line in lines %}  - {{ line.kind_label }}: {{ line.description }}{% if line.quantity != "1" %} x{{ line.quantity }}{% endif %}: ${{ line.amount }}
 {% endfor %}{% endif %}
 Total: ${{ invoice.totals.total }}
 {% if invoice.note %}
 {{ invoice.note }}
 {% endif %}
-{% if req.customer_id %}Detalles: {{ site_url }}/account/requests/{{ req.id }}?lang=es
+{% if order.customer_id %}Detalles: {{ site_url }}/account/orders/{{ order.id }}?lang=es
 {% endif %}
 ¿Preguntas? Solo responde a este correo.
 

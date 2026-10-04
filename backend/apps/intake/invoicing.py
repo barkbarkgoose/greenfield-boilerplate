@@ -1,17 +1,19 @@
-"""Verified invoices: the work actually done and what the parts really cost.
+"""Verified invoices: what was actually delivered.
 
 An invoice has two halves:
 
-* **Jobs** from the catalog (``Invoice.services``), repriced by
-  ``pricing.estimate`` exactly like a booking, so bundles, free add-ons and the
-  volume rate still apply when staff add or remove work. Staff decide whether
-  the rush fee applies (``charge_rush_fee``).
-* **Lines** staff type in: parts at what they actually paid (zero markup),
-  shipping, extra labor (e.g. "other" work quoted by hand) and adjustments
-  (a negative amount for a discount).
+* **Material and loads** (``Invoice.items`` and ``Invoice.loads``), repriced by
+  ``pricing.quote`` exactly like an order, so per-yard prices and per-load
+  delivery fees follow the catalog. They start from the order's items and its
+  dispatched loads; staff correct them to what really went out (an extra yard,
+  a load that came from a farther yard...). Staff decide whether the rush fee
+  applies (``charge_rush_fee``).
+* **Lines** staff type in: services (spreading, a second dump spot), fees
+  (wait time, a blocked driveway) and adjustments (a negative amount for a
+  discount).
 
-Customers see an invoice in their garage only once it's published. Publishing
-also sets the request's ``final_total`` to the invoice total.
+Customers see an invoice in their account only once it's published.
+Publishing also sets the order's ``final_total`` to the invoice total.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import pricing
-from .models import CENTS, Invoice, InvoiceLine, ServiceRequest
+from .models import CENTS, Invoice, InvoiceLine, Order
 
 LINE_KINDS = [kind.value for kind in InvoiceLine.Kind]
 
@@ -31,25 +33,22 @@ def _money(value: Decimal) -> str:
     return str(Decimal(value).quantize(CENTS))
 
 
-def price_labor(services: dict[str, int], charge_rush_fee: bool, today=None) -> dict:
-    return pricing.estimate(
-        services, None, today or timezone.localdate(), emergency=charge_rush_fee
-    )
+def price(items: dict[str, int], loads: list[dict], charge_rush_fee: bool, today=None) -> dict:
+    return pricing.quote(items, loads, None, today or timezone.localdate(), rush=charge_rush_fee)
 
 
-def totals(labor: dict, lines: list[dict]) -> dict:
+def totals(priced: dict, lines: list[dict]) -> dict:
     """Sum an invoice. ``lines`` are dicts with kind, quantity and unit_price."""
     sums = {kind: Decimal(0) for kind in LINE_KINDS}
     for line in lines:
         amount = (Decimal(line["quantity"]) * Decimal(line["unit_price"])).quantize(CENTS)
         sums[line["kind"]] += amount
-    jobs = Decimal(labor.get("total") or "0")
-    total = jobs + sum(sums.values(), Decimal(0))
+    delivered = Decimal(priced.get("total") or "0")
+    total = delivered + sum(sums.values(), Decimal(0))
     return {
-        "jobs": _money(jobs),
-        "parts": _money(sums["part"]),
-        "shipping": _money(sums["shipping"]),
-        "labor": _money(sums["labor"]),
+        "delivered": _money(delivered),
+        "services": _money(sums["service"]),
+        "fees": _money(sums["fee"]),
         "adjustments": _money(sums["adjustment"]),
         "total": _money(total),
     }
@@ -68,11 +67,16 @@ def _line_payload(line: dict) -> dict:
     }
 
 
+def _load_payload(load: dict) -> dict:
+    return {"product": load["product"], "quantity": int(load["quantity"]), "miles": str(load["miles"])}
+
+
 def payload(
     *,
-    services: dict[str, int],
+    items: dict[str, int],
+    loads: list[dict],
     charge_rush_fee: bool,
-    labor: dict,
+    priced: dict,
     lines: list[dict],
     note: str = "",
     invoice: Invoice | None = None,
@@ -80,12 +84,13 @@ def payload(
     """The API shape of an invoice, saved or not, with labels in the active language."""
     return {
         "exists": invoice is not None,
-        "services": pricing.service_list(services),
+        "items": pricing.item_list(items),
+        "loads": [_load_payload(load) for load in loads],
         "charge_rush_fee": charge_rush_fee,
-        "labor": pricing.localize_estimate(labor),
+        "priced": pricing.localize_quote(priced),
         "lines": [_line_payload(line) for line in lines],
         "note": note,
-        "totals": totals(labor, lines),
+        "totals": totals(priced, lines),
         "published_at": invoice.published_at if invoice else None,
         "updated_at": invoice.updated_at if invoice else None,
     }
@@ -105,61 +110,76 @@ def _lines_of(invoice: Invoice) -> list[dict]:
 
 def invoice_payload(invoice: Invoice) -> dict:
     return payload(
-        services=invoice.services,
+        items=invoice.items,
+        loads=invoice.loads,
         charge_rush_fee=invoice.charge_rush_fee,
-        labor=invoice.labor,
+        priced=invoice.priced,
         lines=_lines_of(invoice),
         note=invoice.note,
         invoice=invoice,
     )
 
 
-def draft_payload(req: ServiceRequest) -> dict:
-    """A starting point for a request with no invoice yet: the requested jobs."""
-    services = dict(req.services or {})
+def order_loads(order: Order) -> list[dict]:
+    return [_load_payload({"product": l.product, "quantity": l.quantity, "miles": l.miles}) for l in order.loads.all()]
+
+
+def draft_payload(order: Order) -> dict:
+    """A starting point for an order with no invoice yet: what was ordered and planned."""
+    items = dict(order.items or {})
+    loads = order_loads(order)
     return payload(
-        services=services,
-        charge_rush_fee=req.is_emergency,
-        labor=price_labor(services, req.is_emergency),
+        items=items,
+        loads=loads,
+        charge_rush_fee=order.is_rush,
+        priced=price(items, loads, order.is_rush),
         lines=[],
     )
 
 
+def _normalized(data: dict) -> tuple[dict, list[dict]]:
+    items = pricing.normalize_quantities(data["items"], clamp=False)
+    loads = [_load_payload(load) for load in data["loads"]]
+    return items, loads
+
+
 def preview(data: dict) -> dict:
     """Price validated invoice input without saving it."""
-    services = pricing.normalize_quantities(data["services"])
+    items, loads = _normalized(data)
     return payload(
-        services=services,
+        items=items,
+        loads=loads,
         charge_rush_fee=data["charge_rush_fee"],
-        labor=price_labor(services, data["charge_rush_fee"]),
+        priced=price(items, loads, data["charge_rush_fee"]),
         lines=data["lines"],
         note=data.get("note", ""),
     )
 
 
-def get_invoice(req: ServiceRequest) -> Invoice | None:
+def get_invoice(order: Order) -> Invoice | None:
     try:
-        return req.invoice
+        return order.invoice
     except Invoice.DoesNotExist:
         return None
 
 
 @transaction.atomic
-def save(req: ServiceRequest, data: dict) -> tuple[Invoice, bool]:
-    """Create or replace a request's invoice from validated input.
+def save(order: Order, data: dict) -> tuple[Invoice, bool]:
+    """Create or replace an order's invoice from validated input.
 
     Returns the invoice and whether this save published it (it wasn't before).
     """
-    services = pricing.normalize_quantities(data["services"])
-    labor = price_labor(services, data["charge_rush_fee"])
-    invoice = get_invoice(req) or Invoice(request=req)
+    items, loads = _normalized(data)
+    priced = price(items, loads, data["charge_rush_fee"])
+    invoice = get_invoice(order) or Invoice(order=order)
     was_published = invoice.is_published
 
-    invoice.services = services
+    invoice.items = items
+    invoice.loads = loads
     invoice.charge_rush_fee = data["charge_rush_fee"]
-    invoice.labor = labor
+    invoice.priced = priced
     invoice.note = data.get("note", "")
-    invoice.total = Decimal(totals(labor, data["lines"])["total"])
+    invoice.total = Decimal(totals(priced, data["lines"])["total"])
     if data["published"] and not was_published:
         invoice.published_at = timezone.now()
     elif not data["published"]:
@@ -181,21 +201,21 @@ def save(req: ServiceRequest, data: dict) -> tuple[Invoice, bool]:
 
     # The published invoice *is* the final bill.
     final_total = invoice.total if invoice.is_published else None
-    if req.final_total != final_total and (invoice.is_published or was_published):
-        req.final_total = final_total
-        req.save(update_fields=["final_total", "updated_at"])
+    if order.final_total != final_total and (invoice.is_published or was_published):
+        order.final_total = final_total
+        order.save(update_fields=["final_total", "updated_at"])
     else:
-        # Bump updated_at so a customer's open garage page notices the change.
-        req.save(update_fields=["updated_at"])
+        # Bump updated_at so a customer's open order page notices the change.
+        order.save(update_fields=["updated_at"])
     return invoice, invoice.is_published and not was_published
 
 
 @transaction.atomic
-def delete(req: ServiceRequest) -> None:
-    invoice = get_invoice(req)
+def delete(order: Order) -> None:
+    invoice = get_invoice(order)
     if invoice is None:
         return
     if invoice.is_published:
-        req.final_total = None
+        order.final_total = None
     invoice.delete()
-    req.save(update_fields=["final_total", "updated_at"])
+    order.save(update_fields=["final_total", "updated_at"])

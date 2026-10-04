@@ -1,4 +1,11 @@
-"""Intake app models: vehicles, service requests and their message threads."""
+"""Intake app models: the delivery network (yards, stock, trucks) and orders.
+
+Day-to-day facts that change often live here so staff can flip them from the
+dashboard: which yard has which product, which trucks are running, and the
+loads already booked. The slow-changing geography (which zip codes we serve
+and how far each one is from each yard) lives in ``data/service_area.json``;
+see service_area.py.
+"""
 
 import hashlib
 import secrets
@@ -12,115 +19,124 @@ from . import pricing
 CENTS = Decimal("0.01")
 
 
-class Vehicle(models.Model):
-    """A customer's car. Requests attach to it, so it builds a repair history."""
+# --- Delivery network -----------------------------------------------------------
 
-    owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="vehicles"
-    )
-    vin = models.CharField(max_length=17)
-    year = models.CharField(max_length=4, blank=True)
-    make = models.CharField(max_length=60, blank=True)
-    model = models.CharField(max_length=60, blank=True)
-    nickname = models.CharField(max_length=60, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+
+class Yard(models.Model):
+    """A place trucks load from. ``code`` is how the service-area file names it."""
+
+    code = models.SlugField(max_length=32, unique=True, help_text="Matches the yard keys in data/service_area.json.")
+    name = models.CharField(max_length=80)
+    address = models.CharField(max_length=255, blank=True)
+    # Optional; only used by `manage.py build_service_area` to estimate distances.
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    active = models.BooleanField(default=True, help_text="Inactive yards are never routed to.")
+    notes = models.TextField(blank=True)
 
     class Meta:
-        ordering = ["-created_at"]
-        constraints = [
-            models.UniqueConstraint(fields=["owner", "vin"], name="unique_vehicle_per_owner")
-        ]
+        ordering = ["name"]
 
     def __str__(self) -> str:
-        label = " ".join(part for part in (self.year, self.make, self.model) if part)
-        return self.nickname or label or self.vin
-
-    @classmethod
-    def for_request(cls, owner, service_request: "ServiceRequest") -> "Vehicle | None":
-        """Find or create the owner's vehicle for a request's VIN, filling blanks."""
-        if not service_request.vin:
-            return None
-        vehicle, _ = cls.objects.get_or_create(owner=owner, vin=service_request.vin)
-        changed = []
-        for field, source in (
-            ("year", "vehicle_year"),
-            ("make", "vehicle_make"),
-            ("model", "vehicle_model"),
-        ):
-            value = getattr(service_request, source)
-            if value and not getattr(vehicle, field):
-                setattr(vehicle, field, value)
-                changed.append(field)
-        if changed:
-            vehicle.save(update_fields=changed)
-        return vehicle
+        return self.name
 
 
-class VehicleType(models.TextChoices):
-    SEDAN = "sedan", "Sedan / car"
-    CROSSOVER = "crossover", "Crossover"
-    SUV = "suv", "SUV / van"
-    TRUCK = "truck", "Truck"
-    EUROPEAN = "european", "European"
+class YardStock(models.Model):
+    """Whether a yard has a product right now. No row means it doesn't carry it."""
 
-
-class PartPriceExample(models.Model):
-    """One real parts price you found, used to estimate parts for similar cars.
-
-    ``price`` is the parts cost for one unit of the job: one axle for brake and
-    suspension work, the whole job otherwise (e.g. oil + filter). Estimates take
-    the min / median / max of the examples that match a vehicle; see parts.py.
-    """
-
-    service = models.CharField(
-        max_length=32,
-        choices=[(s.key, s.name) for s in pricing.SERVICES if not s.quote_required],
-    )
-    vehicle_type = models.CharField(max_length=16, choices=VehicleType.choices)
-    vehicle_make = models.CharField(
-        max_length=40, blank=True, help_text="Optional, e.g. TOYOTA. Blank = any make of this type."
-    )
-    part_brand = models.CharField(max_length=60, blank=True, help_text="e.g. Duralast Gold, Akebono")
-    description = models.CharField(max_length=120, blank=True, help_text="e.g. Ceramic pads, 2018 Camry front")
-    source = models.CharField(max_length=40, blank=True, help_text="e.g. AutoZone, RockAuto")
-    source_url = models.URLField(max_length=500, blank=True)
-    price = models.DecimalField(max_digits=8, decimal_places=2)
+    yard = models.ForeignKey(Yard, on_delete=models.CASCADE, related_name="stock")
+    product = models.CharField(max_length=32, choices=pricing.PRODUCT_CHOICES)
+    in_stock = models.BooleanField(default=True)
+    note = models.CharField(max_length=120, blank=True, help_text="e.g. Restock expected Friday")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["service", "vehicle_type", "vehicle_make", "price"]
-        indexes = [models.Index(fields=["service", "vehicle_type"])]
+        ordering = ["yard__name", "product"]
+        constraints = [
+            models.UniqueConstraint(fields=["yard", "product"], name="unique_stock_per_yard_product")
+        ]
 
     def __str__(self) -> str:
-        who = self.vehicle_make or self.get_vehicle_type_display()
-        return f"{self.service} / {who}: ${self.price}"
+        return f"{self.yard} / {self.product}: {'in stock' if self.in_stock else 'out'}"
 
-    def save(self, *args, **kwargs):
-        self.vehicle_make = self.vehicle_make.strip().upper()
-        super().save(*args, **kwargs)
+
+class Truck(models.Model):
+    """A dump truck. It loads at its home yard and works a day of ``workday_minutes``."""
+
+    yard = models.ForeignKey(Yard, on_delete=models.PROTECT, related_name="trucks")
+    name = models.CharField(max_length=60, help_text="e.g. Truck 3 (tandem)")
+    capacity_yards = models.PositiveSmallIntegerField(help_text="Cubic yards per load.")
+    workday_minutes = models.PositiveSmallIntegerField(
+        default=600, help_text="Driving + loading time available per day."
+    )
+    active = models.BooleanField(default=True, help_text="Off = in the shop / not in service.")
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["yard__name", "name"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.capacity_yards} yd, {self.yard})"
+
+
+class TruckDayOff(models.Model):
+    """A day a truck isn't available (maintenance, no driver...)."""
+
+    truck = models.ForeignKey(Truck, on_delete=models.CASCADE, related_name="days_off")
+    date = models.DateField()
+    reason = models.CharField(max_length=120, blank=True)
+
+    class Meta:
+        ordering = ["date"]
+        constraints = [models.UniqueConstraint(fields=["truck", "date"], name="unique_truck_day_off")]
+
+    def __str__(self) -> str:
+        return f"{self.truck.name} off {self.date}"
+
+
+# --- Orders -----------------------------------------------------------------------
 
 
 def hash_claim_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-class ServiceRequest(models.Model):
-    """A booking request or a "please contact me" note from the public site."""
+class Order(models.Model):
+    """A delivery order, or a "please contact me" / special request."""
 
     class RequestType(models.TextChoices):
-        BOOKING = "booking", "Booking"
-        CALLBACK = "callback", "Contact me"
+        DELIVERY = "delivery", "Delivery"
+        CALLBACK = "callback", "Contact me / special request"
 
     class Status(models.TextChoices):
         NEW = "new", "New"
         CONTACTED = "contacted", "Contacted"
         SCHEDULED = "scheduled", "Scheduled"
-        COMPLETED = "completed", "Completed"
+        DELIVERED = "delivered", "Delivered"
         DECLINED = "declined", "Declined"
 
-    request_type = models.CharField(
-        max_length=16, choices=RequestType.choices, default=RequestType.BOOKING
-    )
+    class Window(models.TextChoices):
+        ANY = "any", "Any time"
+        MORNING = "morning", "Morning"
+        AFTERNOON = "afternoon", "Afternoon"
+
+    class Coverage(models.TextChoices):
+        """What the service-area table said about the zip at submission."""
+
+        SERVE = "serve", "In our area"
+        CONTACT = "contact", "Special request area"
+        OUTSIDE = "outside", "Outside our area"
+        UNKNOWN = "", "No zip given"
+
+    class PlanStatus(models.TextChoices):
+        """Whether dispatch could route every load (see dispatch.py)."""
+
+        NONE = "", "Not planned"
+        OK = "ok", "Routed"
+        NO_CAPACITY = "no_capacity", "No truck available"
+        OUT_OF_STOCK = "out_of_stock", "Out of stock"
+
+    request_type = models.CharField(max_length=16, choices=RequestType.choices, default=RequestType.DELIVERY)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.NEW)
 
     customer = models.ForeignKey(
@@ -128,71 +144,47 @@ class ServiceRequest(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="service_requests",
-    )
-    vehicle = models.ForeignKey(
-        Vehicle,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="service_requests",
+        related_name="orders",
     )
 
     name = models.CharField(max_length=120)
     phone = models.CharField(max_length=32, blank=True)
     email = models.EmailField(blank=True)
-    service_address = models.CharField(max_length=255, blank=True)
+    delivery_address = models.CharField(max_length=255, blank=True)
+    zip_code = models.CharField(max_length=5, blank=True, db_index=True)
 
-    vin = models.CharField(max_length=17, blank=True)
-    vehicle_year = models.CharField(max_length=4, blank=True)
-    vehicle_make = models.CharField(max_length=60, blank=True)
-    vehicle_model = models.CharField(max_length=60, blank=True)
-
-    services = models.JSONField(default=dict, blank=True, help_text="Service key -> quantity.")
-    other_description = models.TextField(blank=True)
+    items = models.JSONField(default=dict, blank=True, help_text="Product key -> cubic yards.")
     preferred_date = models.DateField(null=True, blank=True)
+    delivery_window = models.CharField(max_length=12, choices=Window.choices, default=Window.ANY)
+    placement_notes = models.TextField(blank=True, help_text="Where to dump it, access, gate codes...")
     notes = models.TextField(blank=True)
 
     # Language the customer used ("en" / "es"); their emails go out in it.
     language = models.CharField(max_length=8, default="en")
 
-    # Snapshot of the quote shown to the customer at submission time, so later
-    # price changes don't rewrite what they were told.
-    estimate = models.JSONField(default=dict, blank=True)
-    estimated_total = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
-    is_emergency = models.BooleanField(default=False)
+    # Snapshot of the quote shown at submission, so later price changes don't
+    # rewrite what the customer was told.
+    quote = models.JSONField(default=dict, blank=True)
+    estimated_total = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    is_rush = models.BooleanField(default=False)
+    coverage = models.CharField(max_length=10, choices=Coverage.choices, blank=True, default=Coverage.UNKNOWN)
+    plan_status = models.CharField(max_length=16, choices=PlanStatus.choices, blank=True, default=PlanStatus.NONE)
 
-    # Filled in by the mechanic.
-    scheduled_for = models.DateTimeField(null=True, blank=True)
-    completed_on = models.DateField(null=True, blank=True)
-    odometer = models.PositiveIntegerField(null=True, blank=True)
-    final_total = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    # Filled in by staff.
+    scheduled_date = models.DateField(null=True, blank=True)
+    delivered_on = models.DateField(null=True, blank=True)
+    final_total = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     internal_notes = models.TextField(blank=True, help_text="Private; never shown to the customer.")
 
-    class PartsStatus(models.TextChoices):
-        NONE = "", "Not requested"
-        PENDING = "pending", "Pending"
-        READY = "ready", "Ready"
-        UNAVAILABLE = "unavailable", "Unavailable"
-
-    # Vehicle type used for parts matching: detected from the VIN, editable by staff.
-    vehicle_type = models.CharField(max_length=16, choices=VehicleType.choices, blank=True)
-    # Snapshot of the parts estimate shown to the customer (like ``estimate``).
-    parts_estimate_result = models.JSONField(default=dict, blank=True)
-    parts_estimate_status = models.CharField(
-        max_length=12, choices=PartsStatus.choices, blank=True, default=PartsStatus.NONE
-    )
-
     # Consent from the form's checkboxes. ``contact_consent`` (calls/texts about
-    # this request) is required to submit; ``marketing_consent`` (occasional
-    # promotions by text/email) is optional. ``consent_version`` records which
-    # checkbox wording they agreed to (``CONSENT_VERSION`` in serializers.py).
+    # this order) is required to submit; ``marketing_consent`` is optional.
+    # ``consent_version`` records which wording was agreed to (serializers.py).
     contact_consent = models.BooleanField(default=False)
     marketing_consent = models.BooleanField(default=False)
     consent_version = models.CharField(max_length=20, blank=True)
     consent_at = models.DateTimeField(null=True, blank=True)
 
-    # Lets a guest attach this request to an account later. Only the hash is
+    # Lets a guest attach this order to an account later. Only the hash is
     # stored; the raw token goes to the submitter (screen + email) once.
     claim_token_hash = models.CharField(max_length=64, blank=True, db_index=True)
 
@@ -211,25 +203,48 @@ class ServiceRequest(models.Model):
         return token
 
     @property
-    def vehicle_label(self) -> str:
-        return " ".join(
-            part for part in (self.vehicle_year, self.vehicle_make, self.vehicle_model) if part
-        )
+    def delivery_date(self):
+        """The confirmed date, else the one the customer asked for."""
+        return self.scheduled_date or self.preferred_date
+
+    @property
+    def total_yards(self) -> int:
+        return sum((self.items or {}).values())
 
 
-class RequestMessage(models.Model):
-    """A note or question on a request, from the customer or the mechanic."""
+class OrderLoad(models.Model):
+    """One truckload of one product for an order, as routed by dispatch.py.
 
-    request = models.ForeignKey(
-        ServiceRequest, on_delete=models.CASCADE, related_name="messages"
-    )
-    author = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
-    )
+    Loads hold a truck's time on ``date`` (the order's delivery date), so the
+    next customer's quote sees that truck as busier. ``yard``/``truck`` are
+    blank when nothing was available; staff assign them by hand.
+    """
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="loads")
+    product = models.CharField(max_length=32, choices=pricing.PRODUCT_CHOICES)
+    quantity = models.PositiveSmallIntegerField(help_text="Cubic yards.")
+    yard = models.ForeignKey(Yard, on_delete=models.SET_NULL, null=True, blank=True, related_name="loads")
+    truck = models.ForeignKey(Truck, on_delete=models.SET_NULL, null=True, blank=True, related_name="loads")
+    date = models.DateField(null=True, blank=True, db_index=True)
+    miles = models.DecimalField(max_digits=6, decimal_places=1, default=0)
+    minutes = models.PositiveSmallIntegerField(default=0, help_text="Truck time: loading, round trip, dumping.")
+    sequence = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order_id", "sequence", "id"]
+
+    def __str__(self) -> str:
+        return f"#{self.order_id}: {self.quantity} yd {self.product} via {self.truck or 'unassigned'}"
+
+
+class OrderMessage(models.Model):
+    """A note or question on an order, from the customer or staff."""
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="messages")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     from_staff = models.BooleanField(default=False)
     body = models.TextField(max_length=4000)
-    # Set when the other side has seen it (staff for customer messages and
-    # vice versa); drives the unread badges.
+    # Set when the other side has seen it; drives the unread badges.
     read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -237,26 +252,26 @@ class RequestMessage(models.Model):
         ordering = ["created_at"]
 
     def __str__(self) -> str:
-        who = "Mechanic" if self.from_staff else "Customer"
-        return f"{who} on #{self.request_id}: {self.body[:40]}"
+        who = "Staff" if self.from_staff else "Customer"
+        return f"{who} on #{self.order_id}: {self.body[:40]}"
 
 
 class Invoice(models.Model):
-    """The verified bill for a request: the work actually done and real parts cost.
+    """The verified bill for an order: what was actually delivered.
 
-    Staff build it from the requested jobs (repriced by ``pricing.estimate``,
-    so bundles and deals still apply) plus their own lines for parts at cost,
-    shipping, extra labor and adjustments. Customers only see it once
+    Staff build it from the delivered material and loads (repriced by
+    ``pricing.quote``) plus their own lines for extra charges (e.g. spreading,
+    a wait-time fee) and adjustments. Customers only see it once
     ``published_at`` is set; see invoicing.py.
     """
 
-    request = models.OneToOneField(
-        ServiceRequest, on_delete=models.CASCADE, related_name="invoice"
-    )
-    services = models.JSONField(default=dict, blank=True, help_text="Service key -> quantity.")
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="invoice")
+    items = models.JSONField(default=dict, blank=True, help_text="Product key -> cubic yards.")
+    # Delivered loads: [{product, quantity, miles}].
+    loads = models.JSONField(default=list, blank=True)
     charge_rush_fee = models.BooleanField(default=False)
-    # Labor priced from ``services`` (same shape as ServiceRequest.estimate).
-    labor = models.JSONField(default=dict, blank=True)
+    # The material + delivery quote priced from ``items`` and ``loads``.
+    priced = models.JSONField(default=dict, blank=True)
     note = models.TextField(blank=True, help_text="Shown to the customer.")
     total = models.DecimalField(max_digits=9, decimal_places=2, default=0)
     published_at = models.DateTimeField(null=True, blank=True)
@@ -264,7 +279,7 @@ class Invoice(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:
-        return f"Invoice for #{self.request_id}: ${self.total}"
+        return f"Invoice for #{self.order_id}: ${self.total}"
 
     @property
     def is_published(self) -> bool:
@@ -272,12 +287,11 @@ class Invoice(models.Model):
 
 
 class InvoiceLine(models.Model):
-    """One line staff add to an invoice: a part, shipping, extra labor or an adjustment."""
+    """One line staff add to an invoice: a service, a fee or an adjustment."""
 
     class Kind(models.TextChoices):
-        PART = "part", "Part"
-        SHIPPING = "shipping", "Shipping"
-        LABOR = "labor", "Extra labor"
+        SERVICE = "service", "Service"
+        FEE = "fee", "Fee"
         ADJUSTMENT = "adjustment", "Adjustment"
 
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="lines")

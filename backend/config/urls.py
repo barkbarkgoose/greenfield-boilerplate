@@ -16,6 +16,6 @@ urlpatterns = [
     path(settings.ADMIN_URL, admin.site.urls),
     path("api/v1/auth/", include("apps.users.urls")),
     path("api/v1/intake/", include(intake_urls.public_urlpatterns)),
-    path("api/v1/garage/", include(intake_urls.garage_urlpatterns)),
+    path("api/v1/account/", include(intake_urls.account_urlpatterns)),
     path("api/v1/manage/", include(intake_urls.staff_urlpatterns)),
 ]

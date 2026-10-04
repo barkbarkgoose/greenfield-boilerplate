@@ -1,0 +1,40 @@
+{
+  "_note": "Sample yards for the Denver metro demo. Replace with your own; yard codes must match service_area.json.",
+  "yards": [
+    {
+      "code": "north",
+      "name": "North yard (Henderson)",
+      "address": "Henderson, CO",
+      "lat": 39.9200,
+      "lng": -104.8700,
+      "products": ["screened_topsoil", "garden_blend", "fill_dirt", "washed_sand"],
+      "trucks": [
+        {"name": "Truck 1 (tandem)", "capacity_yards": 14},
+        {"name": "Truck 2 (single axle)", "capacity_yards": 6}
+      ]
+    },
+    {
+      "code": "south",
+      "name": "South yard (Littleton)",
+      "address": "Littleton, CO",
+      "lat": 39.5600,
+      "lng": -104.9900,
+      "products": ["screened_topsoil", "garden_blend", "compost", "fill_dirt"],
+      "trucks": [
+        {"name": "Truck 3 (tandem)", "capacity_yards": 14},
+        {"name": "Truck 4 (tandem)", "capacity_yards": 12}
+      ]
+    },
+    {
+      "code": "west",
+      "name": "West yard (Arvada)",
+      "address": "Arvada, CO",
+      "lat": 39.8000,
+      "lng": -105.1600,
+      "products": ["screened_topsoil", "compost", "washed_sand"],
+      "trucks": [
+        {"name": "Truck 5 (single axle)", "capacity_yards": 6}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{% autoescape off %}New {{ order.get_request_type_display|lower }} #{{ order.id }}{% if order.is_rush %} (RUSH){% endif %}
+
+From: {{ order.name }}
+Phone: {{ order.phone|default:"-" }}
+Email: {{ order.email|default:"-" }}
+Deliver to: {{ order.delivery_address|default:"-" }} {{ order.zip_code }}{% if city %} ({{ city }}){% endif %}
+Area: {{ order.get_coverage_display|default:"-" }}
+Language: {{ language_label }}
+OK to call/text about this order: {{ order.contact_consent|yesno:"yes,no" }}
+Promotions by text/email: {{ order.marketing_consent|yesno:"yes,no" }}
+{% if order.customer_id %}Account: {{ order.customer.email }}
+{% endif %}{% if order.preferred_date %}Wanted: {{ order.preferred_date|date:"D, M j, Y" }} ({{ window_label|lower }})
+{% endif %}
+{% include "intake/email/_quote.txt" %}{% if loads %}
+Dispatch: {{ order.get_plan_status_display }}
+{% for load in loads %}  - {{ load.quantity }} yd {{ load.product }} from {{ load.yard.name|default:"?" }} on {{ load.truck.name|default:"NO TRUCK" }} ({{ load.miles }} mi)
+{% endfor %}{% endif %}{% if order.placement_notes %}
+Where to dump it:
+{{ order.placement_notes }}
+{% endif %}{% if order.notes %}
+Notes:
+{{ order.notes }}
+{% endif %}
+Open it: {{ site_url }}/dashboard/orders/{{ order.id }}
+{% endautoescape %}

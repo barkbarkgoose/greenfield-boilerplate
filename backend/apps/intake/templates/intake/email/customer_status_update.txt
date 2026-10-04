@@ -1,13 +1,13 @@
-{% autoescape off %}Hi {{ req.name }},
+{% autoescape off %}Hi {{ order.name }},
 
-Update on your request #{{ req.id }}{% if req.vehicle_label %} ({{ req.vehicle_label }}){% endif %}: {{ headline }}
-{% if req.status == "scheduled" and req.scheduled_for %}
-Appointment: {{ scheduled_for|date:"l, F j \a\t g:i A" }}
-Location: {{ req.service_address|default:"as discussed" }}
-{% endif %}{% if req.status == "completed" and req.final_total %}
-Total: ${{ req.final_total }}
+Update on your order #{{ order.id }}: {{ headline }}
+{% if order.status == "scheduled" and order.scheduled_date %}
+Delivery: {{ order.scheduled_date|date:"l, F j" }}{% if order.delivery_window != "any" %} ({{ window_label|lower }}){% endif %}
+To: {{ order.delivery_address|default:"as discussed" }}
+{% endif %}{% if order.status == "delivered" and order.final_total %}
+Total: ${{ order.final_total }}
 {% endif %}
-{% if req.customer_id %}Details: {{ site_url }}/account/requests/{{ req.id }}
+{% if order.customer_id %}Details: {{ site_url }}/account/orders/{{ order.id }}
 {% endif %}
 Questions? Just reply to this email.
 

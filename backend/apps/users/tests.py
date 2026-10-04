@@ -231,12 +231,12 @@ class TestSessions:
         tokens = login(api_client, sample_user.email).data
         client = APIClient()
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
-        assert client.get("/api/v1/garage/requests/").status_code == 200
+        assert client.get("/api/v1/account/orders/").status_code == 200
 
         sample_user.set_password(NEW_PASSWORD)
         sample_user.save()
 
-        assert client.get("/api/v1/garage/requests/").status_code == 401
+        assert client.get("/api/v1/account/orders/").status_code == 401
         response = api_client.post("/api/v1/auth/refresh/", {"refresh": tokens["refresh"]}, format="json")
         assert response.status_code == 401
         # Signing in with the new password works as usual.

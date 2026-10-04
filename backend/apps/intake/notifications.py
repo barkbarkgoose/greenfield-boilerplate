@@ -1,6 +1,6 @@
-"""Email notifications for the intake flow.
+"""Email notifications for orders.
 
-Customer emails go out in the language of the request (``customer_*.es.txt``
+Customer emails go out in the language of the order (``customer_*.es.txt``
 templates for Spanish); emails to you are always English.
 
 Every send is best-effort: a mail server hiccup is logged and never fails the
@@ -15,23 +15,24 @@ import logging
 from django.conf import settings
 from django.core.mail import EmailMessage
 from django.template.loader import render_to_string
-from django.utils import timezone, translation
+from django.utils import translation
 
-from . import pricing
+from . import pricing, service_area
 from .i18n import normalize, t
-from .models import RequestMessage, ServiceRequest
+from .models import Order, OrderMessage
 
 logger = logging.getLogger(__name__)
 
 OWNER_LANGUAGE = "en"
 
 
-def _context(req: ServiceRequest, language: str, **extra) -> dict:
+def _context(order: Order, language: str, **extra) -> dict:
     with translation.override(language):
-        estimate = pricing.localize_estimate(req.estimate)
+        quote = pricing.localize_quote(order.quote)
     return {
-        "req": req,
-        "estimate": estimate,
+        "order": order,
+        "quote": quote,
+        "window_label": t(f"delivery-window__label--{order.delivery_window}", language),
         "site_url": settings.SITE_URL,
         "business_name": getattr(settings, "BUSINESS_NAME", ""),
         **extra,
@@ -77,77 +78,77 @@ def _lang_query(language: str) -> str:
     return "" if language == "en" else f"?lang={language}"
 
 
-def notify_new_request(req: ServiceRequest, claim_token: str | None = None) -> None:
+def notify_new_order(order: Order, claim_token: str | None = None) -> None:
     owner = OWNER_LANGUAGE
-    kind = "booking" if req.request_type == ServiceRequest.RequestType.BOOKING else "callback"
-    flag = t("email__subject--owner-emergency-flag", owner) if req.is_emergency else ""
+    kind = "delivery" if order.request_type == Order.RequestType.DELIVERY else "callback"
+    flag = t("email__subject--owner-rush-flag", owner) if order.is_rush else ""
+    if order.plan_status in (Order.PlanStatus.NO_CAPACITY, Order.PlanStatus.OUT_OF_STOCK):
+        flag += t("email__subject--owner-dispatch-flag", owner)
     _send(
-        t(f"email__subject--owner-new-{kind}", owner, id=req.id, name=req.name, flag=flag),
-        "owner_new_request",
-        _context(req, owner, language_label=t(f"email-language__label--{req.language}", owner)),
+        t(f"email__subject--owner-new-{kind}", owner, id=order.id, name=order.name, flag=flag),
+        "owner_new_order",
+        _context(
+            order,
+            owner,
+            language_label=t(f"email-language__label--{order.language}", owner),
+            city=service_area.lookup(order.zip_code).city if order.zip_code else "",
+            loads=list(order.loads.select_related("yard", "truck")),
+        ),
         _owner_emails(),
         owner,
-        reply_to=[req.email],
+        reply_to=[order.email],
     )
-    language = normalize(req.language)
-    claim_url = (
-        f"{settings.SITE_URL}/claim/{claim_token}{_lang_query(language)}" if claim_token else None
-    )
+    language = normalize(order.language)
+    claim_url = f"{settings.SITE_URL}/claim/{claim_token}{_lang_query(language)}" if claim_token else None
     _send(
-        t("email__subject--customer-received", language, id=req.id),
-        "customer_request_received",
-        _context(req, language, claim_url=claim_url),
-        [req.email],
+        t("email__subject--customer-received", language, id=order.id),
+        "customer_order_received",
+        _context(order, language, claim_url=claim_url),
+        [order.email],
         language,
         reply_to=_owner_emails(),
     )
 
 
-def notify_customer_message(message: RequestMessage) -> None:
-    req = message.request
+def notify_customer_message(message: OrderMessage) -> None:
+    order = message.order
     _send(
-        t("email__subject--owner-customer-note", OWNER_LANGUAGE, name=req.name, id=req.id),
+        t("email__subject--owner-customer-note", OWNER_LANGUAGE, name=order.name, id=order.id),
         "owner_customer_message",
-        _context(req, OWNER_LANGUAGE, message=message),
+        _context(order, OWNER_LANGUAGE, message=message),
         _owner_emails(),
         OWNER_LANGUAGE,
-        reply_to=[req.email],
+        reply_to=[order.email],
     )
 
 
-def notify_staff_reply(message: RequestMessage) -> None:
-    req = message.request
-    language = normalize(req.language)
+def notify_staff_reply(message: OrderMessage) -> None:
+    order = message.order
+    language = normalize(order.language)
     _send(
-        t("email__subject--customer-reply", language, id=req.id),
+        t("email__subject--customer-reply", language, id=order.id),
         "customer_staff_reply",
-        _context(req, language, message=message),
-        [req.email],
+        _context(order, language, message=message),
+        [order.email],
         language,
         reply_to=_owner_emails(),
     )
 
 
-def notify_status_change(req: ServiceRequest) -> None:
-    if req.status == ServiceRequest.Status.NEW:
+def notify_status_change(order: Order) -> None:
+    if order.status == Order.Status.NEW:
         return
-    language = normalize(req.language)
-    scheduled_for = timezone.localtime(req.scheduled_for) if req.scheduled_for else None
+    language = normalize(order.language)
     _send(
         t(
             "email__subject--customer-status",
             language,
-            id=req.id,
-            status=t(f"email-status__label--{req.status}", language),
+            id=order.id,
+            status=t(f"email-status__label--{order.status}", language),
         ),
         "customer_status_update",
-        _context(
-            req,
-            language,
-            headline=t(f"email-status__headline--{req.status}", language),
-            scheduled_for=scheduled_for,
-        ),
-        [req.email],
+        _context(order, language, headline=t(f"email-status__headline--{order.status}", language)),
+        [order.email],
         language,
         reply_to=_owner_emails(),
     )
@@ -170,14 +171,14 @@ def notify_password_reset(user, reset_url: str, language: str) -> None:
     )
 
 
-def notify_invoice(req: ServiceRequest) -> None:
+def notify_invoice(order: Order) -> None:
     """Send the customer their invoice once it's published."""
-    from . import invoicing  # invoicing -> serializers -> notifications chain
+    from . import invoicing  # invoicing -> models; keep import-time cycles out
 
-    invoice = invoicing.get_invoice(req)
+    invoice = invoicing.get_invoice(order)
     if invoice is None or not invoice.is_published:
         return
-    language = normalize(req.language)
+    language = normalize(order.language)
     with translation.override(language):
         data = invoicing.invoice_payload(invoice)
     lines = [
@@ -185,10 +186,10 @@ def notify_invoice(req: ServiceRequest) -> None:
         for line in data["lines"]
     ]
     _send(
-        t("email__subject--customer-invoice", language, id=req.id),
+        t("email__subject--customer-invoice", language, id=order.id),
         "customer_invoice",
-        _context(req, language, invoice=data, labor=data["labor"], lines=lines),
-        [req.email],
+        _context(order, language, invoice=data, priced=data["priced"], lines=lines),
+        [order.email],
         language,
         reply_to=_owner_emails(),
     )

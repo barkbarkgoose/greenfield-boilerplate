@@ -1,450 +1,260 @@
-"""Service catalog and pricing rules for the mobile mechanic intake form.
+"""Product catalog and pricing rules for dirt and topsoil delivery.
 
 This module is the single source of truth for prices. The frontend reads the
 catalog from `/api/v1/intake/catalog/` and asks `/api/v1/intake/estimate/` for
-live quotes, and the request endpoint re-prices every submission here, so a
+live quotes, and the order endpoint re-prices every submission here, so a
 price change only ever needs to happen in this file.
 
 How prices are built
 --------------------
-* Every job is priced from its book labor hours at ``LABOR_RATE``, which is the
-  take-home target (``TARGET_HOURLY_RATE``) plus a per-hour insurance reserve.
-* Driving is never billed against labor hours. Each visit carries one
-  ``SERVICE_CALL_FEE`` that pays round-trip drive time at the target rate plus
-  fuel/vehicle wear, so wrench time still nets the target rate.
-* Brakes, rotors and suspension share the same teardown (wheel off, caliper
-  off), so doing them together saves real hours. Those saved hours come off
-  the bill as a bundle discount.
-* Small add-ons (oil change, air filter) are free when the rest of the visit
-  is already a long job, since the car is up and the tools are out.
-* Big jobs get a volume rate: once labor passes ``VOLUME_THRESHOLD``, every
-  further hour bills at ``VOLUME_RATE`` instead of ``LABOR_RATE``.
-* Prices round *up* to the nearest $5 and discounts round *down*.
+* Material is priced per cubic yard (``Product.price_per_yard``).
+* Delivery is priced per truckload. An order bigger than one truck holds is
+  split into several loads by the dispatcher (dispatch.py), and each load pays
+  ``DELIVERY_BASE_FEE`` (which covers the first ``INCLUDED_MILES`` from the
+  yard it ships from) plus ``PER_MILE_FEE`` for every mile past that.
+* Delivery today or tomorrow (inside ``RUSH_WINDOW_DAYS``) adds one
+  ``RUSH_FEE`` per order: it means reshuffling a truck's day.
+* Sales tax (``SALES_TAX_RATE``) applies to material only. It's 0 until you
+  set it for your area.
+* Delivery fees round *up* to the nearest $5.
+
+Which yard a load ships from, and on which truck, is decided by dispatch.py
+from the service-area table (data/service_area.json); this module only turns
+the resulting loads into money.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 from .i18n import t
 
 # --- Business inputs (edit these) ------------------------------------------
 
-TARGET_HOURLY_RATE = Decimal("50.00")
-INSURANCE_PER_LABOR_HOUR = Decimal("5.00")
-TRAVEL_HOURS_PER_VISIT = Decimal("0.75")
-VEHICLE_COST_PER_VISIT = Decimal("7.50")
+DELIVERY_BASE_FEE = Decimal("75.00")
+"""Per truckload; covers the first ``INCLUDED_MILES`` from the yard."""
 
-BOOKING_LEAD_DAYS = 14
-"""Standard lead time so parts can be ordered at normal prices."""
+INCLUDED_MILES = Decimal("10")
 
-EMERGENCY_WINDOW_DAYS = 7
-"""Jobs requested within this many days of today are same-week emergencies."""
+PER_MILE_FEE = Decimal("3.50")
+"""Per load, for each mile past ``INCLUDED_MILES`` (one way, yard to site)."""
 
-EMERGENCY_FEE = Decimal("75.00")
+RUSH_WINDOW_DAYS = 2
+"""Orders for a date fewer than this many days out are rush (today, tomorrow)."""
 
-FREE_ADDON_KEYS = ("oil_change", "air_filter")
-"""Add-ons thrown in free once the rest of the visit is long enough."""
+RUSH_FEE = Decimal("50.00")
 
-FREE_ADDON_MIN_HOURS = Decimal("2")
-"""Labor hours the *other* work must reach before the add-ons are free."""
+SALES_TAX_RATE = Decimal("0")
+"""Applied to material only, e.g. Decimal("0.0725"). 0 = no tax line."""
 
-VOLUME_THRESHOLD = Decimal("200.00")
-"""Labor revenue (after bundles, before fees) at which the volume rate starts."""
+DELIVERY_WEEKDAYS = (0, 1, 2, 3, 4, 5)
+"""Days trucks run (Monday = 0). Sunday is off."""
 
-VOLUME_RATE = Decimal("25.00")
-"""Hourly rate for labor past ``VOLUME_THRESHOLD``."""
+MAX_DAYS_AHEAD = 90
+"""How far ahead customers can pick a delivery date."""
 
-# --- Derived rates ----------------------------------------------------------
+# --- Products -----------------------------------------------------------------
 
 _FIVE = Decimal("5")
+CENTS = Decimal("0.01")
 
 
 def round_up_5(amount: Decimal) -> Decimal:
-    return ((amount / _FIVE).to_integral_value(rounding=ROUND_CEILING) * _FIVE).quantize(
-        Decimal("0.01")
-    )
-
-
-def round_down_5(amount: Decimal) -> Decimal:
-    return ((amount / _FIVE).to_integral_value(rounding=ROUND_FLOOR) * _FIVE).quantize(
-        Decimal("0.01")
-    )
-
-
-LABOR_RATE = TARGET_HOURLY_RATE + INSURANCE_PER_LABOR_HOUR
-SERVICE_CALL_FEE = round_up_5(
-    TRAVEL_HOURS_PER_VISIT * TARGET_HOURLY_RATE + VEHICLE_COST_PER_VISIT
-)
+    return ((amount / _FIVE).to_integral_value(rounding=ROUND_CEILING) * _FIVE).quantize(CENTS)
 
 
 @dataclass(frozen=True)
-class Service:
+class Product:
     key: str
-    labor_hours: Decimal
-    unit: str | None = None
-    max_quantity: int = 1
-    quote_required: bool = False
+    price_per_yard: Decimal
+    min_yards: int = 1
+    max_yards: int = 60
 
     # Labels come from the text map in the active language (see i18n.py).
     @property
     def name(self) -> str:
-        return t(f"service__name--{self.key}")
+        return t(f"product__name--{self.key}")
 
     @property
     def description(self) -> str:
-        return t(f"service__description--{self.key}")
-
-    @property
-    def price(self) -> Decimal:
-        if self.quote_required:
-            return Decimal("0.00")
-        return round_up_5(self.labor_hours * LABOR_RATE)
+        return t(f"product__description--{self.key}")
 
 
-@dataclass(frozen=True)
-class Bundle:
-    key: str
-    hours_saved_per_unit: Decimal
-
-    @property
-    def name(self) -> str:
-        return t(f"bundle__name--{self.key}")
-
-    @property
-    def description(self) -> str:
-        return t(f"bundle__description--{self.key}")
-
-    def units(self, quantities: dict[str, int]) -> int:
-        pads = quantities.get("brake_pads", 0)
-        rotors = quantities.get("brake_rotors", 0)
-        suspension = quantities.get("suspension", 0)
-        if self.key == "pads_rotors":
-            return min(pads, rotors)
-        if self.key == "brakes_suspension":
-            return min(suspension, max(pads, rotors))
-        return 0
-
-    @property
-    def discount_per_unit(self) -> Decimal:
-        return round_down_5(self.hours_saved_per_unit * LABOR_RATE)
-
-
-SERVICES: tuple[Service, ...] = (
-    Service(
-        "brake_pads",
-        Decimal("1.0"),
-        unit="axle",
-        max_quantity=2,
-    ),
-    Service(
-        "brake_rotors",
-        Decimal("1.25"),
-        unit="axle",
-        max_quantity=2,
-    ),
-    Service(
-        "suspension",
-        Decimal("2.5"),
-        unit="axle",
-        max_quantity=2,
-    ),
-    Service(
-        "oil_change",
-        Decimal("0.5"),
-    ),
-    Service(
-        "spark_plugs",
-        Decimal("1.0"),
-    ),
-    Service(
-        "alternator",
-        Decimal("1.5"),
-    ),
-    Service(
-        "belt_replacement",
-        Decimal("0.75"),
-    ),
-    Service(
-        "air_filter",
-        Decimal("0.25"),
-    ),
-    Service(
-        "other",
-        Decimal("0"),
-        quote_required=True,
-    ),
+PRODUCTS: tuple[Product, ...] = (
+    Product("screened_topsoil", Decimal("42.00")),
+    Product("garden_blend", Decimal("58.00")),
+    Product("compost", Decimal("48.00")),
+    Product("fill_dirt", Decimal("18.00"), min_yards=5),
+    Product("washed_sand", Decimal("45.00")),
 )
 
-SERVICES_BY_KEY = {service.key: service for service in SERVICES}
-
-BUNDLES: tuple[Bundle, ...] = (
-    Bundle(
-        "pads_rotors",
-        Decimal("0.75"),
-    ),
-    Bundle(
-        "brakes_suspension",
-        Decimal("0.5"),
-    ),
-)
+PRODUCTS_BY_KEY = {product.key: product for product in PRODUCTS}
+PRODUCT_CHOICES = [(p.key, p.key.replace("_", " ").capitalize()) for p in PRODUCTS]
 
 
-def _sentence(text: str) -> str:
-    """Capitalize the first letter (Spanish labels can start with a service name)."""
-    return text[:1].upper() + text[1:]
+# --- Helpers --------------------------------------------------------------------
 
 
-def _hours(value: Decimal) -> str:
-    return format(value.normalize(), "f")
+def _money(value: Decimal) -> str:
+    return str(Decimal(value).quantize(CENTS, rounding=ROUND_HALF_UP))
 
 
-def _addon_names() -> str:
-    first, second = (SERVICES_BY_KEY[key].name.lower() for key in FREE_ADDON_KEYS)
-    return t("list__pair", first=first, second=second)
+def delivery_fee(miles: Decimal | float | str) -> Decimal:
+    """What one truckload costs to deliver from ``miles`` away (one way)."""
+    extra = max(Decimal("0"), Decimal(str(miles)) - INCLUDED_MILES)
+    return round_up_5(DELIVERY_BASE_FEE + extra * PER_MILE_FEE)
 
 
-BUNDLES_BY_KEY = {bundle.key: bundle for bundle in BUNDLES}
+def normalize_quantities(items: list[dict], clamp: bool = True) -> dict[str, int]:
+    """Collapse validated ``[{"key", "quantity"}]`` items into ``{key: yards}``.
 
-
-def deals() -> list[dict]:
-    """Customer-facing descriptions of the visit-level discounts."""
-    addons = _addon_names()
-    rates = {
-        "rate": f"{VOLUME_RATE:.0f}",
-        "threshold": f"{VOLUME_THRESHOLD:.0f}",
-        "labor_rate": f"{LABOR_RATE:.0f}",
-    }
-    return [
-        {
-            "key": "free_addons",
-            "name": _sentence(t("deal__name--free-addons", addons=addons)),
-            "description": t(
-                "deal__description--free-addons", addons=addons, hours=_hours(FREE_ADDON_MIN_HOURS)
-            ),
-        },
-        {
-            "key": "volume_rate",
-            "name": t("deal__name--volume-rate", **rates),
-            "description": t("deal__description--volume-rate", **rates),
-        },
-    ]
-
-
-def discount_label(key: str) -> str:
-    """Label for a discount line, by its key, in the active language."""
-    if key in BUNDLES_BY_KEY:
-        return BUNDLES_BY_KEY[key].name
-    if key == "volume_rate":
-        return t(
-            "discount__name--volume-rate",
-            rate=f"{VOLUME_RATE:.0f}",
-            threshold=f"{VOLUME_THRESHOLD:.0f}",
-        )
-    service_key = key.removeprefix("free_")
-    return _sentence(
-        t(
-            "discount__name--free-addon",
-            service=SERVICES_BY_KEY[service_key].name.lower(),
-            hours=_hours(FREE_ADDON_MIN_HOURS),
-        )
-    )
-
-
-def localize_estimate(quote: dict) -> dict:
-    """Re-render a stored estimate's labels in the active language.
-
-    Estimates are saved with keys; labels follow whoever is reading (the
-    customer in Spanish, the mechanic in English).
+    Callers are expected to have validated keys already. Quantities are clamped
+    to each product's order range unless ``clamp`` is off (invoices record what
+    was actually delivered). Catalog order is kept.
     """
-    if not quote or "line_items" not in quote:
-        return quote
-    localized = dict(quote)
-    localized["line_items"] = [
-        {**item, "name": SERVICES_BY_KEY[item["key"]].name} for item in quote["line_items"]
-    ]
-    localized["discounts"] = [
-        {**discount, "name": discount_label(discount["key"])} for discount in quote["discounts"]
-    ]
-    return localized
-
-
-def catalog() -> dict:
-    """Public, JSON-serializable view of the catalog and booking policy."""
-    return {
-        "services": [
-            {
-                "key": s.key,
-                "name": s.name,
-                "description": s.description,
-                "labor_hours": _hours(s.labor_hours),
-                "price": str(s.price),
-                "unit": s.unit,
-                "max_quantity": s.max_quantity,
-                "quote_required": s.quote_required,
-                "free_addon": s.key in FREE_ADDON_KEYS,
-            }
-            for s in SERVICES
-        ],
-        "bundles": [
-            {
-                "key": b.key,
-                "name": b.name,
-                "description": b.description,
-                "discount_per_unit": str(b.discount_per_unit),
-            }
-            for b in BUNDLES
-        ],
-        "deals": deals(),
-        "labor_rate": str(LABOR_RATE),
-        "service_call_fee": str(SERVICE_CALL_FEE),
-        "emergency_fee": str(EMERGENCY_FEE),
-        "booking_lead_days": BOOKING_LEAD_DAYS,
-        "emergency_window_days": EMERGENCY_WINDOW_DAYS,
-    }
-
-
-def normalize_quantities(items: list[dict]) -> dict[str, int]:
-    """Collapse validated ``[{"key", "quantity"}]`` items into ``{key: qty}``.
-
-    Callers are expected to have validated keys already; quantities are clamped
-    to each service's allowed range.
-    """
+    given = {item["key"]: int(item.get("quantity") or 0) for item in items}
     quantities: dict[str, int] = {}
-    for item in items:
-        service = SERVICES_BY_KEY[item["key"]]
-        qty = max(1, min(int(item.get("quantity") or 1), service.max_quantity))
-        quantities[service.key] = qty
+    for product in PRODUCTS:
+        if product.key in given:
+            qty = given[product.key]
+            quantities[product.key] = max(product.min_yards, min(qty, product.max_yards)) if clamp else max(1, qty)
     return quantities
 
 
-def service_list(services: dict) -> list[dict]:
-    """Stored ``{key: qty}`` -> ``[{key, name, quantity}]`` in catalog order."""
-    services = services or {}
+def item_list(items: dict) -> list[dict]:
+    """Stored ``{key: yards}`` -> ``[{key, name, quantity}]`` in catalog order."""
+    items = items or {}
     return [
-        {"key": s.key, "name": s.name, "quantity": services[s.key]}
-        for s in SERVICES
-        if s.key in services
+        {"key": p.key, "name": p.name, "quantity": items[p.key]}
+        for p in PRODUCTS
+        if p.key in items
     ]
+
+
+def is_delivery_day(day: date) -> bool:
+    return day.weekday() in DELIVERY_WEEKDAYS
 
 
 def scheduling(preferred_date: date | None, today: date) -> dict:
     if preferred_date is None:
-        return {"days_out": None, "is_emergency": False, "short_notice": False}
+        return {"days_out": None, "is_rush": False}
     days_out = (preferred_date - today).days
+    return {"days_out": days_out, "is_rush": days_out < RUSH_WINDOW_DAYS}
+
+
+def catalog() -> dict:
+    """Public, JSON-serializable view of the products and delivery policy."""
     return {
-        "days_out": days_out,
-        "is_emergency": days_out < EMERGENCY_WINDOW_DAYS,
-        # Inside the standard lead time parts may have to come from a local
-        # store at retail price instead of being ordered ahead.
-        "short_notice": days_out < BOOKING_LEAD_DAYS,
+        "products": [
+            {
+                "key": p.key,
+                "name": p.name,
+                "description": p.description,
+                "price_per_yard": str(p.price_per_yard),
+                "min_yards": p.min_yards,
+                "max_yards": p.max_yards,
+            }
+            for p in PRODUCTS
+        ],
+        "delivery_base_fee": str(DELIVERY_BASE_FEE),
+        "included_miles": str(INCLUDED_MILES),
+        "per_mile_fee": str(PER_MILE_FEE),
+        "rush_fee": str(RUSH_FEE),
+        "rush_window_days": RUSH_WINDOW_DAYS,
+        "delivery_weekdays": list(DELIVERY_WEEKDAYS),
+        "max_days_ahead": MAX_DAYS_AHEAD,
+        "sales_tax_rate": str(SALES_TAX_RATE),
     }
 
 
-def estimate(
+# --- Quotes ---------------------------------------------------------------------
+
+
+def quote(
     quantities: dict[str, int],
+    loads: list[dict],
     preferred_date: date | None,
     today: date,
-    emergency: bool | None = None,
+    rush: bool | None = None,
 ) -> dict:
-    """Price a set of services. Labor only; parts are quoted separately.
+    """Price material plus delivery.
 
-    Discounts apply in order: per-axle bundles, free add-ons, then the volume
-    rate on whatever labor remains. ``emergency`` overrides the rush fee that
-    the dates would imply (invoices use it: staff decide whether it applies).
+    ``loads`` are the truckloads dispatch.py planned: dicts with ``product``,
+    ``quantity`` and ``miles``. ``rush`` overrides the rush fee the date would
+    imply (invoices use it: staff decide whether it applies).
     """
     line_items = []
-    subtotal = Decimal("0.00")
-    labor_hours = Decimal("0")
-    for service in SERVICES:
-        qty = quantities.get(service.key)
+    material = Decimal("0.00")
+    for product in PRODUCTS:
+        qty = quantities.get(product.key)
         if not qty:
             continue
-        amount = service.price * qty
-        subtotal += amount
-        labor_hours += service.labor_hours * qty
+        amount = product.price_per_yard * qty
+        material += amount
         line_items.append(
             {
-                "key": service.key,
-                "name": service.name,
+                "key": product.key,
+                "name": product.name,
                 "quantity": qty,
-                "unit": service.unit,
-                "unit_price": str(service.price),
-                "amount": str(amount),
-                "quote_required": service.quote_required,
+                "unit_price": str(product.price_per_yard),
+                "amount": _money(amount),
             }
         )
 
-    discounts = []
-    discount_total = Decimal("0.00")
-    for bundle in BUNDLES:
-        units = bundle.units(quantities)
-        if units <= 0:
-            continue
-        amount = bundle.discount_per_unit * units
-        discount_total += amount
-        labor_hours -= bundle.hours_saved_per_unit * units
-        discounts.append(
-            {"key": bundle.key, "name": bundle.name, "units": units, "amount": str(amount)}
+    deliveries = []
+    delivery_total = Decimal("0.00")
+    for load in loads:
+        fee = delivery_fee(load["miles"])
+        delivery_total += fee
+        deliveries.append(
+            {
+                "product": load["product"],
+                "quantity": load["quantity"],
+                "miles": str(Decimal(str(load["miles"])).quantize(Decimal("0.1"))),
+                "fee": _money(fee),
+            }
         )
-
-    # Free add-ons: only when the *other* work is already a long job.
-    addon_hours = sum(
-        (SERVICES_BY_KEY[key].labor_hours * quantities[key] for key in FREE_ADDON_KEYS if quantities.get(key)),
-        Decimal("0"),
-    )
-    if addon_hours and labor_hours - addon_hours >= FREE_ADDON_MIN_HOURS:
-        for key in FREE_ADDON_KEYS:
-            if quantities.get(key):
-                service = SERVICES_BY_KEY[key]
-                amount = service.price * quantities[key]
-                discount_total += amount
-                discounts.append(
-                    {
-                        "key": f"free_{key}",
-                        "name": discount_label(f"free_{key}"),
-                        "units": 1,
-                        "amount": str(amount),
-                    }
-                )
-
-    # Volume rate: labor past the threshold bills at VOLUME_RATE. Labor dollars
-    # convert to hours at LABOR_RATE, so the discount is the rate difference.
-    net_labor = subtotal - discount_total
-    if net_labor > VOLUME_THRESHOLD:
-        amount = round_down_5(
-            (net_labor - VOLUME_THRESHOLD) * (LABOR_RATE - VOLUME_RATE) / LABOR_RATE
-        )
-        if amount > 0:
-            discount_total += amount
-            discounts.append(
-                {
-                    "key": "volume_rate",
-                    "name": discount_label("volume_rate"),
-                    "units": 1,
-                    "amount": str(amount),
-                }
-            )
 
     schedule = scheduling(preferred_date, today)
-    if emergency is not None:
-        schedule["is_emergency"] = emergency
-    has_work = bool(line_items)
-    service_call_fee = SERVICE_CALL_FEE if has_work else Decimal("0.00")
-    emergency_fee = EMERGENCY_FEE if has_work and schedule["is_emergency"] else Decimal("0.00")
-    total = subtotal - discount_total + service_call_fee + emergency_fee
+    if rush is not None:
+        schedule["is_rush"] = rush
+    has_material = bool(line_items)
+    rush_fee = RUSH_FEE if has_material and schedule["is_rush"] else Decimal("0.00")
+    tax = (material * SALES_TAX_RATE).quantize(CENTS, rounding=ROUND_HALF_UP)
+    total = material + tax + delivery_total + rush_fee
 
     return {
         "line_items": line_items,
-        "discounts": discounts,
-        "subtotal": str(subtotal),
-        "discount_total": str(discount_total),
-        "service_call_fee": str(service_call_fee),
-        "emergency_fee": str(emergency_fee),
-        "total": str(total),
-        "labor_hours": format(labor_hours.normalize(), "f") if labor_hours else "0",
-        "needs_custom_quote": any(item["quote_required"] for item in line_items),
+        "deliveries": deliveries,
+        "material_total": _money(material),
+        "tax": _money(tax),
+        "delivery_total": _money(delivery_total),
+        "rush_fee": _money(rush_fee),
+        "total": _money(total),
+        "load_count": len(deliveries),
         "scheduling": schedule,
     }
+
+
+def localize_quote(stored: dict) -> dict:
+    """Re-render a stored quote's labels in the active language.
+
+    Quotes are saved with keys; labels follow whoever is reading (the customer
+    in Spanish, staff in English).
+    """
+    if not stored or "line_items" not in stored:
+        return stored
+    localized = dict(stored)
+    localized["line_items"] = [
+        {**item, "name": PRODUCTS_BY_KEY[item["key"]].name}
+        for item in stored["line_items"]
+        if item["key"] in PRODUCTS_BY_KEY
+    ]
+    localized["deliveries"] = [
+        {**load, "product_name": PRODUCTS_BY_KEY[load["product"]].name}
+        for load in stored.get("deliveries", [])
+        if load["product"] in PRODUCTS_BY_KEY
+    ]
+    return localized

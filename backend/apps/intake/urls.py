@@ -7,59 +7,33 @@ from . import views
 public_urlpatterns = [
     path("catalog/", views.CatalogView.as_view(), name="intake-catalog"),
     path("estimate/", views.EstimateView.as_view(), name="intake-estimate"),
-    path("requests/", views.ServiceRequestCreateView.as_view(), name="intake-request-create"),
-    path(
-        "requests/parts-estimate/",
-        views.GuestPartsEstimateView.as_view(),
-        name="intake-guest-parts-estimate",
-    ),
+    path("orders/", views.OrderCreateView.as_view(), name="intake-order-create"),
 ]
 
-garage_urlpatterns = [
-    path("vehicles/", views.MyVehiclesView.as_view(), name="garage-vehicles"),
-    path("vehicles/<int:pk>/", views.MyVehicleDetailView.as_view(), name="garage-vehicle"),
-    path("requests/", views.MyRequestsView.as_view(), name="garage-requests"),
-    path("requests/<int:pk>/", views.MyRequestDetailView.as_view(), name="garage-request"),
-    path(
-        "requests/<int:pk>/messages/",
-        views.MyRequestMessageView.as_view(),
-        name="garage-request-messages",
-    ),
-    path(
-        "requests/<int:pk>/updates/",
-        views.MyRequestUpdatesView.as_view(),
-        name="garage-request-updates",
-    ),
-    path("claim/", views.ClaimRequestView.as_view(), name="garage-claim"),
+account_urlpatterns = [
+    path("orders/", views.MyOrdersView.as_view(), name="account-orders"),
+    path("orders/<int:pk>/", views.MyOrderDetailView.as_view(), name="account-order"),
+    path("orders/<int:pk>/messages/", views.MyOrderMessageView.as_view(), name="account-order-messages"),
+    path("orders/<int:pk>/updates/", views.MyOrderUpdatesView.as_view(), name="account-order-updates"),
+    path("claim/", views.ClaimOrderView.as_view(), name="account-claim"),
 ]
 
 staff_urlpatterns = [
     path("summary/", views.StaffSummaryView.as_view(), name="staff-summary"),
-    path("requests/", views.StaffRequestListView.as_view(), name="staff-requests"),
-    path("requests/<int:pk>/", views.StaffRequestDetailView.as_view(), name="staff-request"),
+    path("orders/", views.StaffOrderListView.as_view(), name="staff-orders"),
+    path("orders/<int:pk>/", views.StaffOrderDetailView.as_view(), name="staff-order"),
+    path("orders/<int:pk>/replan/", views.StaffReplanView.as_view(), name="staff-order-replan"),
+    path("orders/<int:pk>/loads/<int:load_id>/", views.StaffLoadView.as_view(), name="staff-order-load"),
+    path("orders/<int:pk>/messages/", views.StaffOrderMessageView.as_view(), name="staff-order-messages"),
+    path("orders/<int:pk>/updates/", views.StaffOrderUpdatesView.as_view(), name="staff-order-updates"),
+    path("orders/<int:pk>/invoice/", views.StaffInvoiceView.as_view(), name="staff-order-invoice"),
     path(
-        "requests/<int:pk>/parts-estimate/",
-        views.StaffPartsEstimateRetryView.as_view(),
-        name="staff-request-parts-estimate",
-    ),
-    path(
-        "requests/<int:pk>/messages/",
-        views.StaffRequestMessageView.as_view(),
-        name="staff-request-messages",
-    ),
-    path(
-        "requests/<int:pk>/updates/",
-        views.StaffRequestUpdatesView.as_view(),
-        name="staff-request-updates",
-    ),
-    path(
-        "requests/<int:pk>/invoice/",
-        views.StaffInvoiceView.as_view(),
-        name="staff-request-invoice",
-    ),
-    path(
-        "requests/<int:pk>/invoice/preview/",
+        "orders/<int:pk>/invoice/preview/",
         views.StaffInvoicePreviewView.as_view(),
-        name="staff-request-invoice-preview",
+        name="staff-order-invoice-preview",
     ),
+    path("dispatch/", views.DispatchBoardView.as_view(), name="staff-dispatch"),
+    path("stock/<int:pk>/", views.StockUpdateView.as_view(), name="staff-stock"),
+    path("trucks/<int:pk>/", views.TruckUpdateView.as_view(), name="staff-truck"),
+    path("trucks/<int:pk>/days-off/", views.TruckDayOffView.as_view(), name="staff-truck-days-off"),
 ]

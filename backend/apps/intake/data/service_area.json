@@ -1,0 +1,717 @@
+{
+  "version": 1,
+  "generated": "2026-10-04",
+  "method": "Estimated: straight-line x 1.3, 30 mph + 5 min. Serve <= 22 mi, contact <= 35 mi. Entries with \"locked\": true are hand-checked.",
+  "zips": {
+    "80002": {
+      "status": "serve",
+      "city": "Arvada",
+      "yards": {
+        "west": {"miles": 4.3, "minutes": 14},
+        "north": {"miles": 19.3, "minutes": 44},
+        "south": {"miles": 22.4, "minutes": 50}
+      }
+    },
+    "80003": {
+      "status": "serve",
+      "city": "Arvada",
+      "yards": {
+        "west": {"miles": 7.0, "minutes": 19},
+        "north": {"miles": 15.8, "minutes": 37},
+        "south": {"miles": 24.6, "minutes": 54}
+      }
+    },
+    "80004": {
+      "status": "serve",
+      "city": "Arvada",
+      "yards": {
+        "west": {"miles": 2.8, "minutes": 11},
+        "north": {"miles": 19.9, "minutes": 45},
+        "south": {"miles": 24.6, "minutes": 54}
+      }
+    },
+    "80005": {
+      "status": "serve",
+      "city": "Arvada",
+      "yards": {
+        "west": {"miles": 5.1, "minutes": 15},
+        "north": {"miles": 18.9, "minutes": 43},
+        "south": {"miles": 27.8, "minutes": 61}
+      }
+    },
+    "80010": {
+      "status": "serve",
+      "city": "Aurora",
+      "yards": {
+        "north": {"miles": 16.4, "minutes": 38},
+        "south": {"miles": 18.1, "minutes": 41},
+        "west": {"miles": 21.2, "minutes": 47}
+      }
+    },
+    "80011": {
+      "status": "serve",
+      "city": "Aurora",
+      "yards": {
+        "north": {"miles": 17.1, "minutes": 39},
+        "south": {"miles": 21.3, "minutes": 48},
+        "west": {"miles": 26.1, "minutes": 57}
+      }
+    },
+    "80012": {
+      "status": "serve",
+      "city": "Aurora",
+      "yards": {
+        "south": {"miles": 16.4, "minutes": 38},
+        "north": {"miles": 20.0, "minutes": 45},
+        "west": {"miles": 24.1, "minutes": 53}
+      }
+    },
+    "80013": {
+      "status": "serve",
+      "city": "Aurora",
+      "yards": {
+        "south": {"miles": 16.7, "minutes": 38},
+        "north": {"miles": 24.4, "minutes": 54},
+        "west": {"miles": 29.0, "minutes": 63}
+      }
+    },
+    "80014": {
+      "status": "serve",
+      "city": "Aurora",
+      "yards": {
+        "south": {"miles": 14.2, "minutes": 33},
+        "north": {"miles": 23.2, "minutes": 51},
+        "west": {"miles": 25.6, "minutes": 56}
+      }
+    },
+    "80015": {
+      "status": "serve",
+      "city": "Aurora",
+      "yards": {
+        "south": {"miles": 15.6, "minutes": 36},
+        "north": {"miles": 27.1, "minutes": 59},
+        "west": {"miles": 30.5, "minutes": 66}
+      }
+    },
+    "80016": {
+      "status": "serve",
+      "city": "Aurora",
+      "yards": {
+        "south": {"miles": 19.0, "minutes": 43},
+        "north": {"miles": 30.4, "minutes": 66}
+      }
+    },
+    "80017": {
+      "status": "serve",
+      "city": "Aurora",
+      "yards": {
+        "south": {"miles": 18.7, "minutes": 42},
+        "north": {"miles": 20.9, "minutes": 47},
+        "west": {"miles": 27.4, "minutes": 60}
+      }
+    },
+    "80020": {
+      "status": "serve",
+      "city": "Broomfield",
+      "yards": {
+        "north": {"miles": 13.2, "minutes": 31},
+        "west": {"miles": 13.0, "minutes": 31},
+        "south": {"miles": 33.1, "minutes": 71}
+      }
+    },
+    "80022": {
+      "status": "serve",
+      "city": "Commerce City",
+      "yards": {
+        "north": {"miles": 5.5, "minutes": 16},
+        "west": {"miles": 23.1, "minutes": 51},
+        "south": {"miles": 29.4, "minutes": 64}
+      }
+    },
+    "80023": {
+      "status": "serve",
+      "city": "Broomfield",
+      "yards": {
+        "north": {"miles": 10.6, "minutes": 26},
+        "west": {"miles": 17.7, "minutes": 40}
+      }
+    },
+    "80026": {
+      "status": "serve",
+      "city": "Lafayette",
+      "yards": {
+        "north": {"miles": 17.9, "minutes": 41},
+        "west": {"miles": 19.6, "minutes": 44}
+      }
+    },
+    "80027": {
+      "status": "serve",
+      "city": "Louisville",
+      "yards": {
+        "west": {"miles": 13.7, "minutes": 32},
+        "north": {"miles": 20.1, "minutes": 45}
+      }
+    },
+    "80030": {
+      "status": "serve",
+      "city": "Westminster",
+      "yards": {
+        "west": {"miles": 8.9, "minutes": 23},
+        "north": {"miles": 14.1, "minutes": 33},
+        "south": {"miles": 24.4, "minutes": 54}
+      }
+    },
+    "80031": {
+      "status": "serve",
+      "city": "Westminster",
+      "yards": {
+        "west": {"miles": 11.1, "minutes": 27},
+        "north": {"miles": 12.0, "minutes": 29},
+        "south": {"miles": 28.5, "minutes": 62}
+      }
+    },
+    "80102": {
+      "status": "contact",
+      "city": "Bennett"
+    },
+    "80104": {
+      "status": "serve",
+      "city": "Castle Rock",
+      "yards": {
+        "south": {"miles": 19.3, "minutes": 44}
+      }
+    },
+    "80107": {
+      "status": "contact",
+      "city": "Elizabeth"
+    },
+    "80108": {
+      "status": "serve",
+      "city": "Castle Rock",
+      "yards": {
+        "south": {"miles": 14.4, "minutes": 34}
+      }
+    },
+    "80109": {
+      "status": "serve",
+      "city": "Castle Rock",
+      "yards": {
+        "south": {"miles": 18.6, "minutes": 42}
+      }
+    },
+    "80110": {
+      "status": "serve",
+      "city": "Englewood",
+      "yards": {
+        "south": {"miles": 7.7, "minutes": 20},
+        "west": {"miles": 17.4, "minutes": 40},
+        "north": {"miles": 26.5, "minutes": 58}
+      }
+    },
+    "80111": {
+      "status": "serve",
+      "city": "Englewood",
+      "yards": {
+        "south": {"miles": 8.9, "minutes": 23},
+        "west": {"miles": 25.8, "minutes": 57},
+        "north": {"miles": 27.8, "minutes": 61}
+      }
+    },
+    "80112": {
+      "status": "serve",
+      "city": "Englewood",
+      "yards": {
+        "south": {"miles": 9.7, "minutes": 24},
+        "west": {"miles": 29.3, "minutes": 64},
+        "north": {"miles": 30.8, "minutes": 67}
+      }
+    },
+    "80113": {
+      "status": "serve",
+      "city": "Englewood",
+      "yards": {
+        "south": {"miles": 7.6, "minutes": 20},
+        "west": {"miles": 19.7, "minutes": 44},
+        "north": {"miles": 25.8, "minutes": 57}
+      }
+    },
+    "80120": {
+      "status": "serve",
+      "city": "Littleton",
+      "yards": {
+        "south": {"miles": 3.6, "minutes": 12},
+        "west": {"miles": 21.0, "minutes": 47},
+        "north": {"miles": 30.3, "minutes": 66}
+      }
+    },
+    "80121": {
+      "status": "serve",
+      "city": "Littleton",
+      "yards": {
+        "south": {"miles": 5.2, "minutes": 15},
+        "west": {"miles": 22.3, "minutes": 50},
+        "north": {"miles": 28.4, "minutes": 62}
+      }
+    },
+    "80122": {
+      "status": "serve",
+      "city": "Littleton",
+      "yards": {
+        "south": {"miles": 3.1, "minutes": 11},
+        "west": {"miles": 24.2, "minutes": 53},
+        "north": {"miles": 31.0, "minutes": 67}
+      }
+    },
+    "80123": {
+      "status": "serve",
+      "city": "Littleton",
+      "yards": {
+        "south": {"miles": 7.4, "minutes": 20},
+        "west": {"miles": 17.7, "minutes": 40},
+        "north": {"miles": 30.6, "minutes": 66}
+      }
+    },
+    "80126": {
+      "status": "serve",
+      "city": "Highlands Ranch",
+      "yards": {
+        "south": {"miles": 2.0, "minutes": 9},
+        "west": {"miles": 26.5, "minutes": 58},
+        "north": {"miles": 34.5, "minutes": 74}
+      }
+    },
+    "80128": {
+      "status": "serve",
+      "city": "Littleton",
+      "yards": {
+        "south": {"miles": 6.2, "minutes": 17},
+        "west": {"miles": 22.0, "minutes": 49}
+      }
+    },
+    "80129": {
+      "status": "serve",
+      "city": "Highlands Ranch",
+      "yards": {
+        "south": {"miles": 1.9, "minutes": 9},
+        "west": {"miles": 25.0, "minutes": 55},
+        "north": {"miles": 35.0, "minutes": 75}
+      }
+    },
+    "80130": {
+      "status": "serve",
+      "city": "Highlands Ranch",
+      "yards": {
+        "south": {"miles": 5.2, "minutes": 15},
+        "west": {"miles": 29.1, "minutes": 63}
+      }
+    },
+    "80134": {
+      "status": "serve",
+      "city": "Parker",
+      "yards": {
+        "south": {"miles": 17.7, "minutes": 40}
+      }
+    },
+    "80138": {
+      "status": "contact",
+      "city": "Parker"
+    },
+    "80202": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "west": {"miles": 11.9, "minutes": 29},
+        "north": {"miles": 17.5, "minutes": 40},
+        "south": {"miles": 17.3, "minutes": 40}
+      }
+    },
+    "80203": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "west": {"miles": 13.8, "minutes": 33},
+        "south": {"miles": 15.4, "minutes": 36},
+        "north": {"miles": 18.6, "minutes": 42}
+      }
+    },
+    "80204": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "west": {"miles": 11.0, "minutes": 27},
+        "south": {"miles": 15.8, "minutes": 37},
+        "north": {"miles": 19.9, "minutes": 45}
+      }
+    },
+    "80205": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "west": {"miles": 13.9, "minutes": 33},
+        "north": {"miles": 15.9, "minutes": 37},
+        "south": {"miles": 18.0, "minutes": 41}
+      }
+    },
+    "80206": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 15.6, "minutes": 36},
+        "west": {"miles": 15.6, "minutes": 36},
+        "north": {"miles": 17.9, "minutes": 41}
+      }
+    },
+    "80207": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "north": {"miles": 14.8, "minutes": 35},
+        "west": {"miles": 17.1, "minutes": 39},
+        "south": {"miles": 18.6, "minutes": 42}
+      }
+    },
+    "80209": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 13.3, "minutes": 32},
+        "west": {"miles": 15.7, "minutes": 36},
+        "north": {"miles": 20.3, "minutes": 46}
+      }
+    },
+    "80210": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 10.9, "minutes": 27},
+        "west": {"miles": 17.4, "minutes": 40},
+        "north": {"miles": 22.6, "minutes": 50}
+      }
+    },
+    "80211": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "west": {"miles": 10.1, "minutes": 25},
+        "north": {"miles": 17.3, "minutes": 40},
+        "south": {"miles": 18.6, "minutes": 42}
+      }
+    },
+    "80212": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "west": {"miles": 8.2, "minutes": 21},
+        "north": {"miles": 18.2, "minutes": 41},
+        "south": {"miles": 19.4, "minutes": 44}
+      }
+    },
+    "80214": {
+      "status": "serve",
+      "city": "Lakewood",
+      "yards": {
+        "west": {"miles": 8.1, "minutes": 21},
+        "south": {"miles": 17.3, "minutes": 40},
+        "north": {"miles": 21.0, "minutes": 47}
+      }
+    },
+    "80215": {
+      "status": "serve",
+      "city": "Lakewood",
+      "yards": {
+        "west": {"miles": 5.9, "minutes": 17},
+        "south": {"miles": 18.7, "minutes": 42},
+        "north": {"miles": 23.1, "minutes": 51}
+      }
+    },
+    "80216": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "west": {"miles": 13.5, "minutes": 32},
+        "north": {"miles": 13.8, "minutes": 33},
+        "south": {"miles": 20.3, "minutes": 46}
+      }
+    },
+    "80218": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "west": {"miles": 14.4, "minutes": 34},
+        "south": {"miles": 15.4, "minutes": 36},
+        "north": {"miles": 18.4, "minutes": 42}
+      }
+    },
+    "80219": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 12.6, "minutes": 30},
+        "west": {"miles": 12.8, "minutes": 31},
+        "north": {"miles": 23.1, "minutes": 51}
+      }
+    },
+    "80220": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 16.3, "minutes": 38},
+        "north": {"miles": 17.1, "minutes": 39},
+        "west": {"miles": 17.8, "minutes": 41}
+      }
+    },
+    "80221": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "west": {"miles": 10.4, "minutes": 26},
+        "north": {"miles": 13.5, "minutes": 32},
+        "south": {"miles": 23.0, "minutes": 51}
+      }
+    },
+    "80222": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 10.9, "minutes": 27},
+        "west": {"miles": 19.8, "minutes": 45},
+        "north": {"miles": 22.7, "minutes": 50}
+      }
+    },
+    "80223": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 12.6, "minutes": 30},
+        "west": {"miles": 14.0, "minutes": 33},
+        "north": {"miles": 21.8, "minutes": 49}
+      }
+    },
+    "80224": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 12.7, "minutes": 30},
+        "west": {"miles": 19.9, "minutes": 45},
+        "north": {"miles": 21.0, "minutes": 47}
+      }
+    },
+    "80226": {
+      "status": "serve",
+      "city": "Lakewood",
+      "yards": {
+        "west": {"miles": 9.4, "minutes": 24},
+        "south": {"miles": 15.1, "minutes": 35},
+        "north": {"miles": 24.2, "minutes": 53}
+      }
+    },
+    "80227": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 11.6, "minutes": 28},
+        "west": {"miles": 13.0, "minutes": 31},
+        "north": {"miles": 27.1, "minutes": 59}
+      }
+    },
+    "80228": {
+      "status": "serve",
+      "city": "Lakewood",
+      "yards": {
+        "west": {"miles": 9.7, "minutes": 24},
+        "south": {"miles": 16.6, "minutes": 38},
+        "north": {"miles": 28.5, "minutes": 62}
+      }
+    },
+    "80229": {
+      "status": "serve",
+      "city": "Thornton",
+      "yards": {
+        "north": {"miles": 8.5, "minutes": 22},
+        "west": {"miles": 14.7, "minutes": 34},
+        "south": {"miles": 26.7, "minutes": 58}
+      }
+    },
+    "80230": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 15.6, "minutes": 36},
+        "north": {"miles": 18.2, "minutes": 41},
+        "west": {"miles": 19.7, "minutes": 44}
+      }
+    },
+    "80231": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 12.2, "minutes": 29},
+        "west": {"miles": 22.0, "minutes": 49},
+        "north": {"miles": 22.3, "minutes": 50}
+      }
+    },
+    "80232": {
+      "status": "serve",
+      "city": "Lakewood",
+      "yards": {
+        "west": {"miles": 10.9, "minutes": 27},
+        "south": {"miles": 13.7, "minutes": 32},
+        "north": {"miles": 25.6, "minutes": 56}
+      }
+    },
+    "80233": {
+      "status": "serve",
+      "city": "Thornton",
+      "yards": {
+        "north": {"miles": 5.5, "minutes": 16},
+        "west": {"miles": 17.3, "minutes": 40},
+        "south": {"miles": 30.6, "minutes": 66}
+      }
+    },
+    "80235": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 10.4, "minutes": 26},
+        "west": {"miles": 14.7, "minutes": 34},
+        "north": {"miles": 28.9, "minutes": 63}
+      }
+    },
+    "80237": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 9.7, "minutes": 24},
+        "west": {"miles": 23.0, "minutes": 51},
+        "north": {"miles": 25.0, "minutes": 55}
+      }
+    },
+    "80238": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "north": {"miles": 13.1, "minutes": 31},
+        "west": {"miles": 19.5, "minutes": 44},
+        "south": {"miles": 20.7, "minutes": 46}
+      }
+    },
+    "80239": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "north": {"miles": 12.2, "minutes": 29},
+        "west": {"miles": 22.9, "minutes": 51},
+        "south": {"miles": 23.3, "minutes": 52}
+      }
+    },
+    "80241": {
+      "status": "serve",
+      "city": "Thornton",
+      "yards": {
+        "north": {"miles": 5.8, "minutes": 17},
+        "west": {"miles": 18.4, "minutes": 42},
+        "south": {"miles": 33.2, "minutes": 71}
+      }
+    },
+    "80246": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 13.6, "minutes": 32},
+        "west": {"miles": 17.8, "minutes": 41},
+        "north": {"miles": 19.8, "minutes": 45}
+      }
+    },
+    "80247": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "south": {"miles": 14.4, "minutes": 34},
+        "north": {"miles": 20.0, "minutes": 45},
+        "west": {"miles": 21.4, "minutes": 48}
+      }
+    },
+    "80249": {
+      "status": "serve",
+      "city": "Denver",
+      "yards": {
+        "north": {"miles": 15.8, "minutes": 37},
+        "south": {"miles": 26.5, "minutes": 58},
+        "west": {"miles": 29.5, "minutes": 64}
+      }
+    },
+    "80260": {
+      "status": "serve",
+      "city": "Thornton",
+      "yards": {
+        "north": {"miles": 10.5, "minutes": 26},
+        "west": {"miles": 12.3, "minutes": 30},
+        "south": {"miles": 27.6, "minutes": 60}
+      }
+    },
+    "80301": {
+      "status": "contact",
+      "city": "Boulder"
+    },
+    "80303": {
+      "status": "serve",
+      "city": "Boulder",
+      "yards": {
+        "west": {"miles": 17.7, "minutes": 40},
+        "north": {"miles": 25.0, "minutes": 55}
+      }
+    },
+    "80401": {
+      "status": "serve",
+      "city": "Golden",
+      "yards": {
+        "west": {"miles": 8.6, "minutes": 22},
+        "south": {"miles": 21.9, "minutes": 49},
+        "north": {"miles": 30.6, "minutes": 66}
+      }
+    },
+    "80403": {
+      "status": "contact",
+      "city": "Golden",
+      "note": "Foothill roads: we quote these by hand"
+    },
+    "80439": {
+      "status": "contact",
+      "city": "Evergreen",
+      "note": "Foothill roads: we quote these by hand"
+    },
+    "80465": {
+      "status": "contact",
+      "city": "Morrison",
+      "note": "Foothill roads: we quote these by hand"
+    },
+    "80501": {
+      "status": "contact",
+      "city": "Longmont"
+    },
+    "80516": {
+      "status": "serve",
+      "city": "Erie",
+      "yards": {
+        "north": {"miles": 16.2, "minutes": 37},
+        "west": {"miles": 23.2, "minutes": 51}
+      }
+    },
+    "80601": {
+      "status": "serve",
+      "city": "Brighton",
+      "yards": {
+        "north": {"miles": 6.2, "minutes": 17},
+        "west": {"miles": 28.9, "minutes": 63}
+      }
+    },
+    "80602": {
+      "status": "serve",
+      "city": "Brighton",
+      "yards": {
+        "north": {"miles": 4.7, "minutes": 14},
+        "west": {"miles": 22.8, "minutes": 51}
+      }
+    }
+  }
+}

@@ -1,11 +1,11 @@
 """Intake app views.
 
-* Public: catalog, estimate and the booking/contact form. No login needed.
-* Customer ("my garage"): a signed-in customer's vehicles, requests and notes.
-* Staff: the mechanic's dashboard for managing every request.
+* Public: catalog, live quote and the order/contact form. No login needed.
+* Customer ("my orders"): a signed-in customer's orders and notes.
+* Staff: the order dashboard plus the dispatch board (trucks, loads, stock).
 """
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.conf import settings
 from django.db import transaction
@@ -13,33 +13,33 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, status
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import invoicing, notifications, parts, pricing
+from . import dispatch, invoicing, notifications, pricing
 from .authentication import OptionalJWTAuthentication
 from .captcha import check_human
 from .i18n import t
-from .models import (
-    RequestMessage,
-    ServiceRequest,
-    Vehicle,
-    VehicleType,
-    hash_claim_token,
-)
+from .models import Order, OrderLoad, OrderMessage, Truck, TruckDayOff, YardStock, hash_claim_token
 from .serializers import (
-    CustomerRequestSerializer,
+    CustomerOrderSerializer,
+    DayOffSerializer,
     EstimateSerializer,
     InvoiceSerializer,
+    LoadAssignmentSerializer,
     MessageSerializer,
-    RequestSummarySerializer,
-    ServiceRequestSerializer,
-    StaffRequestSerializer,
-    StaffRequestSummarySerializer,
-    VehicleSerializer,
+    OrderSerializer,
+    OrderSummarySerializer,
+    StaffOrderSerializer,
+    StaffOrderSummarySerializer,
+    StockUpdateSerializer,
+    TruckUpdateSerializer,
+    price_order,
 )
+
+ACTIVE_STATUSES = [Order.Status.NEW, Order.Status.CONTACTED, Order.Status.SCHEDULED]
 
 
 def _unread(from_staff: bool) -> Count:
@@ -51,10 +51,8 @@ def _unread(from_staff: bool) -> Count:
     )
 
 
-def _mark_read(service_request: ServiceRequest, from_staff: bool) -> None:
-    service_request.messages.filter(from_staff=from_staff, read_at__isnull=True).update(
-        read_at=timezone.now()
-    )
+def _mark_read(order: Order, from_staff: bool) -> None:
+    order.messages.filter(from_staff=from_staff, read_at__isnull=True).update(read_at=timezone.now())
 
 
 def _require_messaging() -> None:
@@ -63,26 +61,30 @@ def _require_messaging() -> None:
         raise NotFound(t("validation__messaging--disabled"))
 
 
-def _updates(service_request: ServiceRequest, query_params, viewer_is_staff: bool) -> dict:
-    """New messages since ``?after=<message id>`` plus the request's last change.
+def _updates(order: Order, query_params, viewer_is_staff: bool) -> dict:
+    """New messages since ``?after=<message id>`` plus the order's last change.
 
-    Open request pages poll this so replies show up without a reload. When
-    ``updated_at`` moves (status, appointment, invoice...) the page refetches
-    the whole request.
+    Open order pages poll this so replies show up without a reload. When
+    ``updated_at`` moves (status, date, invoice...) the page refetches.
     """
     try:
         after = int(query_params.get("after") or 0)
     except ValueError:
         after = 0
-    messages = list(
-        service_request.messages.filter(id__gt=after).select_related("author", "request")
-    )
+    messages = list(order.messages.filter(id__gt=after).select_related("author", "order"))
     # The viewer is looking at the thread, so the other side's messages are read.
-    _mark_read(service_request, from_staff=not viewer_is_staff)
-    return {
-        "messages": MessageSerializer(messages, many=True).data,
-        "updated_at": service_request.updated_at,
-    }
+    _mark_read(order, from_staff=not viewer_is_staff)
+    return {"messages": MessageSerializer(messages, many=True).data, "updated_at": order.updated_at}
+
+
+def _customer_plan(result: dispatch.Plan) -> dict:
+    """What the public form learns from routing: coverage, problems, next date."""
+    data = dispatch.localize(result.as_dict())
+    for load in data["loads"]:
+        # Trucks are our business; the customer only sees where it ships from.
+        load.pop("truck", None)
+        load.pop("truck_name", None)
+    return data
 
 
 # --- Public --------------------------------------------------------------------
@@ -96,38 +98,25 @@ class PublicAPIView(APIView):
 
 class CatalogView(PublicAPIView):
     def get(self, request):
-        data = pricing.catalog()
-        # Lets the booking form offer a parts estimate before the VIN is decoded:
-        # the customer picks their own vehicle class instead of waiting on a VIN.
-        data["vehicle_types"] = [
-            {"key": value, "label": parts.vehicle_type_label(value)} for value in VehicleType.values
-        ]
-        return Response(data)
+        return Response(pricing.catalog())
 
 
 class EstimateView(PublicAPIView):
+    """Live quote for the order form: coverage for the zip, routing, price."""
+
     throttle_scope = "intake_estimate"
 
     def post(self, request):
         serializer = EstimateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        quantities = pricing.normalize_quantities(serializer.validated_data["services"])
-        quote = pricing.estimate(
-            quantities,
-            serializer.validated_data.get("preferred_date"),
-            timezone.localdate(),
-        )
-        vehicle_type = serializer.validated_data["vehicle_type"]
-        jobs = parts.jobs_for(quantities) if vehicle_type else {}
-        if jobs:
-            result = parts.estimate(jobs, vehicle_type, "")
-            result["status"] = "ready" if result["services"] else "unavailable"
-            quote["parts_estimate"] = parts.localize(result)
-        return Response(quote)
+        data = serializer.validated_data
+        quantities = pricing.normalize_quantities(data["items"])
+        quote, result = price_order(quantities, data["zip_code"], data.get("preferred_date"))
+        return Response({"quote": quote or None, "plan": _customer_plan(result)})
 
 
-class ServiceRequestCreateView(APIView):
-    """Booking or contact form. Signed-in customers get it filed to their garage."""
+class OrderCreateView(APIView):
+    """Order or contact form. Signed-in customers get it filed to their account."""
 
     authentication_classes = [OptionalJWTAuthentication]
     permission_classes = [AllowAny]
@@ -138,97 +127,53 @@ class ServiceRequestCreateView(APIView):
         if user is None:
             check_human(request)
 
-        serializer = ServiceRequestSerializer(data=request.data)
+        serializer = OrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         claim_token = None
+        plan_data = None
         with transaction.atomic():
-            service_request = serializer.save(customer=user)
-            if user is not None:
-                service_request.vehicle = Vehicle.for_request(user, service_request)
-            else:
-                claim_token = service_request.issue_claim_token()
-            service_request.save(update_fields=["vehicle", "claim_token_hash"])
-            transaction.on_commit(
-                lambda: notifications.notify_new_request(service_request, claim_token)
-            )
-            transaction.on_commit(lambda: parts.schedule(service_request))
+            order = serializer.save(customer=user)
+            if user is None:
+                claim_token = order.issue_claim_token()
+                order.save(update_fields=["claim_token_hash"])
+            if order.request_type == Order.RequestType.DELIVERY:
+                # Booking the loads holds the trucks' time for the next quote.
+                plan_data = dispatch.assign(order).as_dict()
+            transaction.on_commit(lambda: notifications.notify_new_order(order, claim_token))
 
         return Response(
             {
-                "id": service_request.id,
-                "request_type": service_request.request_type,
-                "estimate": pricing.localize_estimate(service_request.estimate),
-                "preferred_date": service_request.preferred_date,
-                # Lets a guest attach this request to an account right away,
-                # and read its parts estimate while it's being generated.
+                "id": order.id,
+                "request_type": order.request_type,
+                "quote": pricing.localize_quote(order.quote),
+                "preferred_date": order.preferred_date,
+                "plan_status": plan_data["status"] if plan_data else None,
+                # Lets a guest attach this order to an account right away.
                 "claim_token": claim_token,
-                "parts_estimate_status": "pending" if parts.wants_estimate(service_request) else None,
             },
             status=status.HTTP_201_CREATED,
         )
 
 
-class GuestPartsEstimateView(PublicAPIView):
-    """Read (never trigger) a guest request's parts estimate via its claim token."""
-
-    throttle_scope = "intake_parts"
-
-    def post(self, request):
-        token = str(request.data.get("claim_token") or "")
-        service_request = (
-            ServiceRequest.objects.filter(claim_token_hash=hash_claim_token(token))
-            .first()
-            if token
-            else None
-        )
-        if service_request is None:
-            return Response({"detail": t("validation__lookup--not-found")}, status=status.HTTP_404_NOT_FOUND)
-        return Response({"parts_estimate": parts.as_payload(service_request)})
-
-
 # --- Customer ------------------------------------------------------------------
 
 
-class MyVehiclesView(generics.ListAPIView):
+class MyOrdersView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = VehicleSerializer
+    serializer_class = OrderSummarySerializer
     pagination_class = None
 
     def get_queryset(self):
-        return Vehicle.objects.filter(owner=self.request.user).prefetch_related(
-            "service_requests"
-        )
+        return Order.objects.filter(customer=self.request.user).annotate(unread_count=_unread(from_staff=True))
 
 
-class MyVehicleDetailView(generics.RetrieveUpdateAPIView):
+class MyOrderDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = VehicleSerializer
-    http_method_names = ["get", "patch"]
+    serializer_class = CustomerOrderSerializer
 
     def get_queryset(self):
-        return Vehicle.objects.filter(owner=self.request.user)
-
-
-class MyRequestsView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = RequestSummarySerializer
-    pagination_class = None
-
-    def get_queryset(self):
-        return ServiceRequest.objects.filter(customer=self.request.user).annotate(
-            unread_count=_unread(from_staff=True)
-        )
-
-
-class MyRequestDetailView(generics.RetrieveAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = CustomerRequestSerializer
-
-    def get_queryset(self):
-        return ServiceRequest.objects.filter(customer=self.request.user).select_related(
-            "vehicle"
-        ).prefetch_related("messages__author")
+        return Order.objects.filter(customer=self.request.user).prefetch_related("messages__author")
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -236,54 +181,45 @@ class MyRequestDetailView(generics.RetrieveAPIView):
         return Response(self.get_serializer(instance).data)
 
 
-class MyRequestMessageView(APIView):
+class MyOrderMessageView(APIView):
     permission_classes = [IsAuthenticated]
     throttle_scope = "intake_message"
 
     def post(self, request, pk):
         _require_messaging()
-        service_request = get_object_or_404(ServiceRequest, pk=pk, customer=request.user)
+        order = get_object_or_404(Order, pk=pk, customer=request.user)
         serializer = MessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        message = serializer.save(request=service_request, author=request.user, from_staff=False)
+        message = serializer.save(order=order, author=request.user, from_staff=False)
         transaction.on_commit(lambda: notifications.notify_customer_message(message))
         return Response(MessageSerializer(message).data, status=status.HTTP_201_CREATED)
 
 
-class MyRequestUpdatesView(APIView):
+class MyOrderUpdatesView(APIView):
     permission_classes = [IsAuthenticated]
-    throttle_scope = "garage_poll"
+    throttle_scope = "account_poll"
 
     def get(self, request, pk):
         _require_messaging()
-        service_request = get_object_or_404(ServiceRequest, pk=pk, customer=request.user)
-        return Response(_updates(service_request, request.query_params, viewer_is_staff=False))
+        order = get_object_or_404(Order, pk=pk, customer=request.user)
+        return Response(_updates(order, request.query_params, viewer_is_staff=False))
 
 
-class ClaimRequestView(APIView):
-    """Attach a guest request to the signed-in account using its emailed token."""
+class ClaimOrderView(APIView):
+    """Attach a guest order to the signed-in account using its emailed token."""
 
     permission_classes = [IsAuthenticated]
     throttle_scope = "intake_claim"
 
     def post(self, request):
         token = str(request.data.get("token") or "")
-        service_request = (
-            ServiceRequest.objects.filter(claim_token_hash=hash_claim_token(token)).first()
-            if token
-            else None
-        )
-        if service_request is None:
-            return Response(
-                {"detail": t("validation__claim--invalid")},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        with transaction.atomic():
-            service_request.customer = request.user
-            service_request.vehicle = Vehicle.for_request(request.user, service_request)
-            service_request.claim_token_hash = ""
-            service_request.save(update_fields=["customer", "vehicle", "claim_token_hash"])
-        return Response({"id": service_request.id})
+        order = Order.objects.filter(claim_token_hash=hash_claim_token(token)).first() if token else None
+        if order is None:
+            return Response({"detail": t("validation__claim--invalid")}, status=status.HTTP_404_NOT_FOUND)
+        order.customer = request.user
+        order.claim_token_hash = ""
+        order.save(update_fields=["customer", "claim_token_hash"])
+        return Response({"id": order.id})
 
 
 # --- Staff ---------------------------------------------------------------------
@@ -294,46 +230,49 @@ class StaffSummaryView(APIView):
 
     def get(self, request):
         now = timezone.now()
-        counts = dict(
-            ServiceRequest.objects.values_list("status").annotate(n=Count("id")).order_by()
+        today = timezone.localdate()
+        counts = dict(Order.objects.values_list("status").annotate(n=Count("id")).order_by())
+        active = Order.objects.filter(status__in=ACTIVE_STATUSES)
+        upcoming = (
+            Order.objects.filter(
+                status=Order.Status.SCHEDULED,
+                scheduled_date__gte=today,
+                scheduled_date__lte=today + timedelta(days=14),
+            )
+            .order_by("scheduled_date", "delivery_window")[:10]
         )
-        upcoming = ServiceRequest.objects.filter(
-            status=ServiceRequest.Status.SCHEDULED,
-            scheduled_for__gte=now - timedelta(hours=12),
-            scheduled_for__lte=now + timedelta(days=14),
-        ).order_by("scheduled_for")[:10]
         return Response(
             {
-                "status_counts": {s: counts.get(s, 0) for s in ServiceRequest.Status.values},
+                "status_counts": {s: counts.get(s, 0) for s in Order.Status.values},
                 "messaging_enabled": settings.INTAKE_MESSAGING_ENABLED,
-                "unread_messages": RequestMessage.objects.filter(
-                    from_staff=False, read_at__isnull=True
+                "unread_messages": OrderMessage.objects.filter(from_staff=False, read_at__isnull=True).count(),
+                "new_this_week": Order.objects.filter(created_at__gte=now - timedelta(days=7)).count(),
+                "rush_open": active.filter(is_rush=True).exclude(status=Order.Status.SCHEDULED).count(),
+                "needs_dispatch": active.filter(
+                    request_type=Order.RequestType.DELIVERY,
+                    plan_status__in=[Order.PlanStatus.NO_CAPACITY, Order.PlanStatus.OUT_OF_STOCK],
                 ).count(),
-                "new_this_week": ServiceRequest.objects.filter(
-                    created_at__gte=now - timedelta(days=7)
-                ).count(),
-                "emergencies_open": ServiceRequest.objects.filter(
-                    is_emergency=True,
-                    status__in=[ServiceRequest.Status.NEW, ServiceRequest.Status.CONTACTED],
-                ).count(),
-                "upcoming": StaffRequestSummarySerializer(upcoming, many=True).data,
+                "loads_today": OrderLoad.objects.filter(date=today, order__status__in=ACTIVE_STATUSES).count(),
+                "upcoming": StaffOrderSummarySerializer(upcoming, many=True).data,
             }
         )
 
 
-class StaffRequestListView(generics.ListAPIView):
+class StaffOrderListView(generics.ListAPIView):
     permission_classes = [IsAdminUser]
-    serializer_class = StaffRequestSummarySerializer
+    serializer_class = StaffOrderSummarySerializer
 
     def get_queryset(self):
         params = self.request.query_params
-        qs = ServiceRequest.objects.annotate(unread_count=_unread(from_staff=False))
+        qs = Order.objects.annotate(unread_count=_unread(from_staff=False))
         if status_filter := params.get("status"):
             qs = qs.filter(status__in=status_filter.split(","))
         if request_type := params.get("request_type"):
             qs = qs.filter(request_type=request_type)
-        if params.get("emergency") == "1":
-            qs = qs.filter(is_emergency=True)
+        if params.get("rush") == "1":
+            qs = qs.filter(is_rush=True)
+        if params.get("needs_dispatch") == "1":
+            qs = qs.filter(plan_status__in=[Order.PlanStatus.NO_CAPACITY, Order.PlanStatus.OUT_OF_STOCK])
         if params.get("unread") == "1":
             qs = qs.filter(unread_count__gt=0)
         if search := params.get("q", "").strip():
@@ -341,25 +280,24 @@ class StaffRequestListView(generics.ListAPIView):
                 Q(name__icontains=search)
                 | Q(email__icontains=search)
                 | Q(phone__icontains=search)
-                | Q(vin__icontains=search)
-                | Q(vehicle_make__icontains=search)
-                | Q(vehicle_model__icontains=search)
+                | Q(zip_code__startswith=search)
+                | Q(delivery_address__icontains=search)
             )
         ordering = {
             "newest": ["-created_at"],
             "oldest": ["created_at"],
             "preferred": ["preferred_date", "created_at"],
-            "scheduled": ["scheduled_for", "created_at"],
+            "scheduled": ["scheduled_date", "delivery_window", "created_at"],
         }.get(params.get("ordering", "newest"), ["-created_at"])
         return qs.order_by(*ordering)
 
 
-class StaffRequestDetailView(generics.RetrieveUpdateAPIView):
+class StaffOrderDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAdminUser]
-    serializer_class = StaffRequestSerializer
+    serializer_class = StaffOrderSerializer
     http_method_names = ["get", "patch"]
-    queryset = ServiceRequest.objects.select_related("vehicle", "customer").prefetch_related(
-        "messages__author"
+    queryset = Order.objects.select_related("customer").prefetch_related(
+        "messages__author", "loads__yard", "loads__truck"
     )
 
     def retrieve(self, request, *args, **kwargs):
@@ -368,84 +306,95 @@ class StaffRequestDetailView(generics.RetrieveUpdateAPIView):
         return Response(self.get_serializer(instance).data)
 
     def perform_update(self, serializer):
-        before = (serializer.instance.status, serializer.instance.scheduled_for)
-        vehicle_type_before = serializer.instance.vehicle_type
+        before = (serializer.instance.status, serializer.instance.scheduled_date, serializer.instance.delivery_window)
+        date_before = serializer.instance.delivery_date
         notify = serializer.validated_data.get("notify_customer", False)
         instance = serializer.save()
-        if instance.vehicle_type != vehicle_type_before:
-            transaction.on_commit(lambda: parts.schedule(instance))
-        if notify and (instance.status, instance.scheduled_for) != before:
+        if instance.delivery_date != date_before:
+            dispatch.move_to_date(instance)
+        if notify and (instance.status, instance.scheduled_date, instance.delivery_window) != before:
             transaction.on_commit(lambda: notifications.notify_status_change(instance))
 
 
-class StaffPartsEstimateRetryView(APIView):
-    """Recalculate a request's parts estimate, e.g. after adding price examples."""
+class StaffReplanView(APIView):
+    """Route an order again from scratch (replacing hand-assigned trucks)."""
 
     permission_classes = [IsAdminUser]
 
     def post(self, request, pk):
-        service_request = get_object_or_404(ServiceRequest, pk=pk)
-        if not parts.wants_estimate(service_request):
-            return Response(
-                {"detail": t("validation__parts--unavailable")},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if service_request.parts_estimate_status != ServiceRequest.PartsStatus.PENDING:
-            parts.schedule(service_request)
-        service_request.refresh_from_db()
-        return Response({"parts_estimate": parts.as_payload(service_request)})
+        order = get_object_or_404(Order, pk=pk)
+        if order.request_type != Order.RequestType.DELIVERY or not order.items:
+            raise ValidationError({"detail": t("validation__dispatch--nothing-to-plan")})
+        dispatch.assign(order)
+        return Response(StaffOrderSerializer(Order.objects.get(pk=pk)).data)
 
 
-class StaffRequestMessageView(APIView):
+class StaffLoadView(APIView):
+    """Move one load to another truck (or unassign it)."""
+
+    permission_classes = [IsAdminUser]
+
+    def patch(self, request, pk, load_id):
+        load = get_object_or_404(OrderLoad.objects.select_related("order"), pk=load_id, order_id=pk)
+        serializer = LoadAssignmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            dispatch.reassign_load(load, serializer.validated_data["truck"])
+        except ValueError as exc:
+            raise ValidationError({"truck": t("validation__dispatch--yard-not-listed", yard=str(exc))}) from exc
+        return Response(StaffOrderSerializer(Order.objects.get(pk=pk)).data)
+
+
+class StaffOrderMessageView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request, pk):
         _require_messaging()
-        service_request = get_object_or_404(ServiceRequest, pk=pk)
+        order = get_object_or_404(Order, pk=pk)
         serializer = MessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        message = serializer.save(request=service_request, author=request.user, from_staff=True)
+        message = serializer.save(order=order, author=request.user, from_staff=True)
         transaction.on_commit(lambda: notifications.notify_staff_reply(message))
         return Response(MessageSerializer(message).data, status=status.HTTP_201_CREATED)
 
 
-class StaffRequestUpdatesView(APIView):
+class StaffOrderUpdatesView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request, pk):
         _require_messaging()
-        service_request = get_object_or_404(ServiceRequest, pk=pk)
-        return Response(_updates(service_request, request.query_params, viewer_is_staff=True))
+        order = get_object_or_404(Order, pk=pk)
+        return Response(_updates(order, request.query_params, viewer_is_staff=True))
 
 
 class StaffInvoiceView(APIView):
-    """The verified invoice for a request.
+    """The verified invoice for an order.
 
-    GET returns the saved invoice, or a draft built from the requested jobs
-    (``exists: false``). PUT saves the whole invoice; DELETE discards it.
+    GET returns the saved invoice, or a draft built from the order and its
+    loads (``exists: false``). PUT saves the whole invoice; DELETE discards it.
     """
 
     permission_classes = [IsAdminUser]
 
     def get(self, request, pk):
-        service_request = get_object_or_404(ServiceRequest, pk=pk)
-        invoice = invoicing.get_invoice(service_request)
+        order = get_object_or_404(Order, pk=pk)
+        invoice = invoicing.get_invoice(order)
         if invoice is None:
-            return Response(invoicing.draft_payload(service_request))
+            return Response(invoicing.draft_payload(order))
         return Response(invoicing.invoice_payload(invoice))
 
     def put(self, request, pk):
-        service_request = get_object_or_404(ServiceRequest, pk=pk)
+        order = get_object_or_404(Order, pk=pk)
         serializer = InvoiceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        invoice, just_published = invoicing.save(service_request, serializer.validated_data)
+        invoice, just_published = invoicing.save(order, serializer.validated_data)
         if just_published and serializer.validated_data["notify_customer"]:
-            transaction.on_commit(lambda: notifications.notify_invoice(service_request))
+            transaction.on_commit(lambda: notifications.notify_invoice(order))
         return Response(invoicing.invoice_payload(invoice))
 
     def delete(self, request, pk):
-        service_request = get_object_or_404(ServiceRequest, pk=pk)
-        invoicing.delete(service_request)
+        order = get_object_or_404(Order, pk=pk)
+        invoicing.delete(order)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -455,7 +404,68 @@ class StaffInvoicePreviewView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request, pk):
-        get_object_or_404(ServiceRequest, pk=pk)
+        get_object_or_404(Order, pk=pk)
         serializer = InvoiceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         return Response(invoicing.preview(serializer.validated_data))
+
+
+# --- Dispatch board --------------------------------------------------------------
+
+
+class DispatchBoardView(APIView):
+    """One day's trucks, loads and yard stock: ``?date=YYYY-MM-DD`` (default today)."""
+
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        raw = request.query_params.get("date")
+        try:
+            day = date.fromisoformat(raw) if raw else timezone.localdate()
+        except ValueError as exc:
+            raise ValidationError({"date": t("validation__date--invalid")}) from exc
+        return Response(dispatch.day_board(day))
+
+
+class StockUpdateView(generics.UpdateAPIView):
+    """Flip a product in or out of stock at a yard."""
+
+    permission_classes = [IsAdminUser]
+    serializer_class = StockUpdateSerializer
+    queryset = YardStock.objects.all()
+    http_method_names = ["patch"]
+
+
+class TruckUpdateView(generics.UpdateAPIView):
+    """Take a truck out of service (or back in)."""
+
+    permission_classes = [IsAdminUser]
+    serializer_class = TruckUpdateSerializer
+    queryset = Truck.objects.all()
+    http_method_names = ["patch"]
+
+
+class TruckDayOffView(APIView):
+    """POST {date, reason} marks a truck off for a day; DELETE ?date= clears it."""
+
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, pk):
+        truck = get_object_or_404(Truck, pk=pk)
+        serializer = DayOffSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        TruckDayOff.objects.update_or_create(
+            truck=truck,
+            date=serializer.validated_data["date"],
+            defaults={"reason": serializer.validated_data.get("reason", "")},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def delete(self, request, pk):
+        truck = get_object_or_404(Truck, pk=pk)
+        try:
+            day = date.fromisoformat(request.query_params.get("date", ""))
+        except ValueError as exc:
+            raise ValidationError({"date": t("validation__date--invalid")}) from exc
+        TruckDayOff.objects.filter(truck=truck, date=day).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

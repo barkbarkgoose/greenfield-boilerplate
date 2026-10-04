@@ -1,0 +1,19 @@
+{% autoescape off %}Hola {{ order.name }}:
+
+¡Gracias por tu pedido a {{ business_name }}! {% if order.request_type == "delivery" %}Recibimos tu pedido de entrega{% if order.preferred_date %} para el {{ order.preferred_date|date:"l j \d\e F" }}{% if order.delivery_window != "any" %} ({{ window_label|lower }}){% endif %}{% endif %}. Te llamaremos o te enviaremos un mensaje para confirmar la fecha y dónde descargarlo.{% else %}Recibimos tu solicitud y te responderemos lo antes posible.{% endif %}
+
+Referencia: #{{ order.id }}
+{% if order.delivery_address %}Entrega en: {{ order.delivery_address }}{% if order.zip_code %} {{ order.zip_code }}{% endif %}
+{% endif %}
+{% include "intake/email/_quote.es.txt" %}{% if order.request_type == "delivery" %}
+No pagas nada todavía. Confirmaremos el precio final cuando confirmemos tu entrega. Asegúrate de que un camión de volteo pueda entrar: unos 3 metros (10 pies) de ancho y 4.3 metros (14 pies) de altura libre, en terreno firme.
+
+{% endif %}{% if claim_url %}¿Quieres dar seguimiento a este pedido y volver a pedir en un par de toques? Crea una cuenta gratis (o inicia sesión) aquí:
+{{ claim_url }}
+{% else %}Da seguimiento a este pedido aquí:
+{{ site_url }}/account/orders/{{ order.id }}?lang=es
+{% endif %}
+¿Preguntas? Solo responde a este correo, o llámanos o envíanos un mensaje de texto.
+
+{{ business_name }}
+{% endautoescape %}

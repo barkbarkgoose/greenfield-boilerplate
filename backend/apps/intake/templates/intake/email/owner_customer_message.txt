@@ -1,6 +1,6 @@
-{% autoescape off %}{{ req.name }} added a note to request #{{ req.id }}{% if req.vehicle_label %} ({{ req.vehicle_label }}){% endif %}:
+{% autoescape off %}{{ order.name }} added a note to order #{{ order.id }}:
 
 {{ message.body }}
 
-Reply: {{ site_url }}/dashboard/requests/{{ req.id }}
+Reply: {{ site_url }}/dashboard/orders/{{ order.id }}
 {% endautoescape %}

@@ -151,7 +151,7 @@ LANGUAGE_CODE = "en"
 # Customer-facing languages. Text lives in apps/intake/text/*.json and the
 # frontend's src/i18n/locales/*.json; see the README's "Translations".
 LANGUAGES = [("en", "English"), ("es", "Español")]
-# Shop-local time zone: appointment times in emails and the admin use it.
+# Yard-local time zone: delivery dates in emails and the admin use it.
 TIME_ZONE = env("TIME_ZONE", default="UTC")
 USE_I18N = True
 USE_TZ = True
@@ -183,9 +183,8 @@ REST_FRAMEWORK = {
         "intake_submit": "10/hour",
         "intake_message": "30/hour",
         "intake_claim": "20/hour",
-        "intake_parts": "240/hour",
-        # Open garage pages check for replies every ~15s while visible.
-        "garage_poll": "1200/hour",
+        # Open order pages check for replies every ~10s while visible.
+        "account_poll": "1200/hour",
         # Per IP: slows password guessing and reset-email spam.
         "auth_login": "30/hour",
         "password_reset": "5/hour",
@@ -249,7 +248,7 @@ DEFAULT_FROM_EMAIL = _keychain_or_env(
 # Where "new request" and "customer replied" notifications go.
 INTAKE_NOTIFY_EMAILS = _keychain_or_env_list("INTAKE_NOTIFY_EMAILS", "INTAKE_NOTIFY_EMAILS")
 
-BUSINESS_NAME = env("BUSINESS_NAME", default="Wrench on Wheels")
+BUSINESS_NAME = env("BUSINESS_NAME", default="Groundwork Soil & Supply")
 
 # Public URL of the frontend, used for links inside emails.
 SITE_URL = (_keychain_or_env("SITE_URL", "SITE_URL", default="http://localhost:5177") or "").rstrip("/")
@@ -263,15 +262,15 @@ PASSKEY_RP_ID = env("PASSKEY_RP_ID", default="") or (urlparse(SITE_URL).hostname
 PASSKEY_RP_NAME = env("PASSKEY_RP_NAME", default="") or BUSINESS_NAME
 PASSKEY_ORIGINS = env.list("PASSKEY_ORIGINS", default=[SITE_URL])
 
-# --- Parts estimates -----------------------------------------------------------
-# Estimates come from the PartPriceExample table (see apps/intake/parts.py) and
-# run on a background thread so the VIN decode never slows down booking.
-PARTS_ESTIMATE_ASYNC = True
+# --- Service area -----------------------------------------------------------
+# The zip-code lookup table (see apps/intake/service_area.py). Blank = the
+# bundled apps/intake/data/service_area.json.
+SERVICE_AREA_FILE = env("SERVICE_AREA_FILE", default="")
 
 # --- Captcha (Cloudflare Turnstile) -------------------------------------------
 # Leave unset to disable (local dev, tests). Set together with the frontend's
 # VITE_TURNSTILE_SITE_KEY.
-# Customer <-> mechanic message threads on request pages (and the live-update
+# Customer <-> staff message threads on order pages (and the live-update
 # polling that comes with them). Off for launch: customers call or text instead.
 # The code, data and tests stay; set INTAKE_MESSAGING_ENABLED=1 to bring it back.
 INTAKE_MESSAGING_ENABLED = env.bool("INTAKE_MESSAGING_ENABLED", default=False)

@@ -1,0 +1,7 @@
+{% if quote.line_items %}Quote:
+{% for item in quote.line_items %}  - {{ item.name }}: {{ item.quantity }} yd x ${{ item.unit_price }} = ${{ item.amount }}
+{% endfor %}{% if quote.tax != "0.00" %}  - Sales tax: ${{ quote.tax }}
+{% endif %}{% for load in quote.deliveries %}  - Delivery, {{ load.quantity }} yd {{ load.product_name|lower }} ({{ load.miles }} mi): ${{ load.fee }}
+{% endfor %}{% if quote.rush_fee != "0.00" %}  - Rush delivery: ${{ quote.rush_fee }}
+{% endif %}  Estimated total: ${{ quote.total }}
+{% endif %}
