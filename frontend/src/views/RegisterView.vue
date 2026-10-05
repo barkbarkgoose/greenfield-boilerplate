@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { firstError } from '@/utils/apiErrors'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,8 +27,8 @@ async function handleSubmit() {
     router.push(typeof redirect === 'string' ? redirect : '/dashboard')
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'response' in error) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      errorMessage.value = err.response?.data?.detail || 'Registration failed. Please try again.'
+      const err = error as { response?: { data?: unknown } }
+      errorMessage.value = firstError(err.response?.data) || 'Registration failed. Please try again.'
     } else {
       errorMessage.value = 'Registration failed. Please try again.'
     }
