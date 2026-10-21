@@ -146,7 +146,9 @@ class RegisterSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, validators=[validate_password])
     name = serializers.CharField(max_length=255)
-    organization_name = serializers.CharField(max_length=255)
+    organization_name = serializers.CharField(
+        max_length=255, required=False, allow_blank=True
+    )
 
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
@@ -155,8 +157,12 @@ class RegisterSerializer(serializers.Serializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        organization_name = validated_data.pop("organization_name")
-        organization = Organization.objects.create(name=organization_name)
+        organization_name = validated_data.pop("organization_name", "").strip()
+        organization = (
+            Organization.objects.create(name=organization_name)
+            if organization_name
+            else None
+        )
         user = User.objects.create_user(
             organization=organization,
             email=validated_data["email"],

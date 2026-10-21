@@ -7,7 +7,7 @@ export interface RegisterRequest {
   email: string
   password: string
   name: string
-  organization_name: string
+  organization_name?: string
 }
 
 export interface LoginResponse {
@@ -23,7 +23,7 @@ export interface RegisterResponse {
   organization: {
     id: number
     name: string
-  }
+  } | null
   token: string
 }
 
@@ -53,7 +53,7 @@ export interface User {
   organization?: {
     id: number
     name: string
-  }
+  } | null
   settings?: UserSettings
 }
 

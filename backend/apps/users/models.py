@@ -45,7 +45,9 @@ def default_user_settings() -> dict:
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.SET_NULL, null=True, blank=True
+    )
     email = models.EmailField(unique=True)
     name = models.CharField(max_length=255)
     is_active = models.BooleanField(default=True)

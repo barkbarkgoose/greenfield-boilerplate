@@ -44,6 +44,22 @@ class TestAuthViews:
 
 
 @pytest.mark.django_db
+class TestRegistration:
+    payload = {"email": "new@example.com", "password": "Sup3r-secret-pw", "name": "New"}
+
+    def test_register_without_organization(self, api_client):
+        response = api_client.post("/api/v1/auth/register/", self.payload, format="json")
+        assert response.status_code == 201
+        assert response.data["organization"] is None
+
+    def test_register_with_organization(self, api_client):
+        data = {**self.payload, "organization_name": "Acme"}
+        response = api_client.post("/api/v1/auth/register/", data, format="json")
+        assert response.status_code == 201
+        assert response.data["organization"]["name"] == "Acme"
+
+
+@pytest.mark.django_db
 class TestUserSettingsAPI:
     def test_settings_unauthenticated(self, api_client):
         response = api_client.get("/api/v1/auth/settings/")
