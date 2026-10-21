@@ -4,7 +4,9 @@ import router from '@/router'
 import { clearStoredAuth, TOKEN_KEY } from '@/utils/authStorage'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8800',
+  // Same-origin by default: the Vite dev proxy forwards /api to the backend, so the
+  // app works from any host (localhost, LAN, Tailscale). Set VITE_API_URL to bypass.
+  baseURL: import.meta.env.VITE_API_URL || '',
   headers: {
     'Content-Type': 'application/json'
   }

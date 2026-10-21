@@ -7,7 +7,7 @@ import { fileURLToPath, URL } from 'node:url'
 // even when the default ports are already in use.
 const port = Number(process.env.PORT) || 5177
 const backendTarget =
-  process.env.VITE_BACKEND_TARGET || process.env.VITE_API_URL || 'http://localhost:8800'
+  process.env.VITE_BACKEND_TARGET || process.env.VITE_API_URL || 'http://127.0.0.1:8800'
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],

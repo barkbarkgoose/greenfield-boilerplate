@@ -286,7 +286,6 @@ def main() -> int:
 
     frontend_env = os.environ.copy()
     frontend_env["PORT"] = str(frontend_port)
-    frontend_env["VITE_API_URL"] = backend_url
     frontend_env["VITE_BACKEND_TARGET"] = backend_url
 
     processes: list[subprocess.Popen] = []
