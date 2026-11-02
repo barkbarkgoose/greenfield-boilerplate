@@ -113,6 +113,19 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // null until fetched; the register link/page stay hidden unless the server says yes.
+  const allowRegistration = ref<boolean | null>(null)
+
+  async function loadAuthConfig(): Promise<void> {
+    if (allowRegistration.value !== null) return
+    try {
+      const response = await api.get<{ allow_registration: boolean }>('/api/v1/auth/config/')
+      allowRegistration.value = response.data.allow_registration
+    } catch {
+      allowRegistration.value = false
+    }
+  }
+
   async function register(payload: RegisterRequest): Promise<void> {
     const response = await api.post<RegisterResponse>('/api/v1/auth/register/', payload)
     token.value = response.data.token
@@ -139,6 +152,8 @@ export const useAuthStore = defineStore('auth', () => {
     updateUserSettings,
     saveApiKey,
     login,
+    allowRegistration,
+    loadAuthConfig,
     register,
     logout
   }

@@ -1,5 +1,6 @@
 """Users app views."""
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -58,12 +59,26 @@ class UserSettingsView(APIView):
         )
 
 
+class AuthConfigView(APIView):
+    """Public flags the login/register screens need before anyone signs in."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({"allow_registration": settings.ALLOW_REGISTRATION})
+
+
 class RegisterView(APIView):
     """Register a new user with organization."""
 
     permission_classes = [AllowAny]
 
     def post(self, request):
+        if not settings.ALLOW_REGISTRATION:
+            return Response(
+                {"detail": "Registration is disabled."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()

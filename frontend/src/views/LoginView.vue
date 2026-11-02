@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { firstError } from '@/utils/apiErrors'
@@ -7,6 +7,8 @@ import { firstError } from '@/utils/apiErrors'
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+
+onMounted(() => authStore.loadAuthConfig())
 
 const email = ref('')
 const password = ref('')
@@ -41,7 +43,7 @@ async function handleSubmit() {
         <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
           Sign in to your account
         </h2>
-        <p class="mt-2 text-center text-sm text-gray-600">
+        <p v-if="authStore.allowRegistration" class="mt-2 text-center text-sm text-gray-600">
           Or
           <router-link to="/register" class="font-medium text-blue-600 hover:text-blue-500">
             create a new account

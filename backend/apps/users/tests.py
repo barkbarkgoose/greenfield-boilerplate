@@ -158,3 +158,20 @@ class TestUserSettingsAPI:
 
         assert response.status_code == 200
         assert response.data["api_keys_status"]["openai"]["is_configured"] is False
+
+
+@pytest.mark.django_db
+class TestRegistrationFlag:
+    payload = {"name": "Closed", "email": "closed@example.com", "password": VALID_PASSWORD}
+
+    def test_config_reports_flag(self, api_client, settings):
+        settings.ALLOW_REGISTRATION = False
+        response = api_client.get("/api/v1/auth/config/")
+        assert response.status_code == 200
+        assert response.json() == {"allow_registration": False}
+
+    def test_register_blocked_when_disabled(self, api_client, settings):
+        settings.ALLOW_REGISTRATION = False
+        response = api_client.post("/api/v1/auth/register/", self.payload, format="json")
+        assert response.status_code == 403
+        assert not User.objects.filter(email="closed@example.com").exists()

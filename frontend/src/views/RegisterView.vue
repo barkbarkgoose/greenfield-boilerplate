@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { firstError } from '@/utils/apiErrors'
@@ -7,6 +7,11 @@ import { firstError } from '@/utils/apiErrors'
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+
+onMounted(async () => {
+  await authStore.loadAuthConfig()
+  if (!authStore.allowRegistration) router.replace({ name: 'login' })
+})
 
 const form = ref({
   name: '',

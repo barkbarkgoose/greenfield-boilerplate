@@ -26,10 +26,11 @@ uv run python -m keychain set "DATABASE_URL=postgres://user:password@db.example.
 uv run python -m keychain doctor
 ```
 
-`SECRET_KEY` and `CORS_ALLOWED_ORIGINS` use their `.env` values until a keychain value
-is set, which keeps first-run management commands working. Once migrated, remove those
-secret values from `.env`. Back up `backend/keychain.key` securely: without it,
-`keychain.json` cannot be recovered. Rotate it with `uv run python -m keychain rotate-key`.
+**Precedence: environment / `.env` first, then the keychain, then the default.** A value set
+in the OS environment or `backend/.env` always overrides the keychain, so any machine can
+override a setting without touching the encrypted store. Keep a value in only one place to
+avoid confusion. Back up `backend/keychain.key` securely: without it, `keychain.json`
+cannot be recovered. Rotate it with `uv run python -m keychain rotate-key`.
 
 ## Quick Start
 
@@ -136,11 +137,27 @@ uv run --with-requirements requirements.txt python -m pytest
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/v1/auth/register/` | POST | No | Register user + org |
+| `/api/v1/auth/config/` | GET | No | Public flags (`allow_registration`) |
+| `/api/v1/auth/register/` | POST | No* | Register user + org (*403 unless `ALLOW_REGISTRATION`) |
 | `/api/v1/auth/login/` | POST | No | Get JWT tokens + user |
 | `/api/v1/auth/refresh/` | POST | No | Refresh access token |
 | `/api/v1/auth/settings/` | GET | Yes | Read current user's settings |
 | `/api/v1/auth/settings/` | PATCH | Yes | Update current user's settings |
+
+## Registration
+
+Open sign-up is on in development and **off in production**. `ALLOW_REGISTRATION` defaults
+to `True` in `base.py` and to `False` in `production.py`; set `ALLOW_REGISTRATION=True` in
+the environment / `.env` to override either default. When it is off, `POST
+/api/v1/auth/register/` returns 403 and the frontend hides the register link and page.
+The frontend learns the setting at runtime from `GET /api/v1/auth/config/`, so changing
+it needs a restart but no rebuild. Create the first production account with
+`python manage.py createsuperuser`.
+
+## Deploying
+
+See [`docs/vps-hosting.md`](docs/vps-hosting.md) for a minimal single-server setup
+(nginx, gunicorn, systemd, SQLite, rotating backups, logging).
 
 ## Add New Apps
 

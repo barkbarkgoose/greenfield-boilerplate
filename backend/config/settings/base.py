@@ -1,5 +1,6 @@
 """Base settings for config project."""
 
+import os
 import sys
 from datetime import timedelta
 from pathlib import Path
@@ -25,36 +26,39 @@ from keychain import (  # noqa: E402
 )
 
 
-def _keychain_or_env(key: str, env_var: str, default: str | None = None) -> str | None:
-    """Resolve a scalar setting from the keychain, falling back to the environment.
+def _env_or_keychain(key: str, env_var: str, default: str | None = None) -> str | None:
+    """Resolve a scalar setting: environment / `.env` first, then the keychain.
 
-    The keychain is optional during first-run bootstrap: if it has not been
-    initialized, values are read from `.env` so management commands keep working
-    before `python -m keychain init`.
+    The environment always wins, so a value can be overridden on any machine
+    without touching the encrypted keychain. The keychain is optional: if it has
+    not been initialized, it is simply skipped.
     """
+    value = env(env_var, default=None)
+    if value is not None:
+        return value
     try:
         value = keychain_get(key)
     except KeychainNotInitializedError:
         value = None
-    if value is not None:
-        return value
-    return env(env_var, default=default)
+    return value if value is not None else default
 
 
-def _keychain_or_env_list(
+def _env_or_keychain_list(
     key: str, env_var: str, default: list[str] | None = None
 ) -> list[str]:
-    """Resolve a comma-separated list setting from keychain or environment."""
+    """Resolve a comma-separated list setting: environment first, then the keychain."""
+    if env_var in os.environ:
+        return env.list(env_var)
     try:
         value = keychain_get_list(key)
     except KeychainNotInitializedError:
         value = None
     if value is not None:
         return value
-    return env.list(env_var, default=default if default is not None else [])
+    return default if default is not None else []
 
 
-SECRET_KEY = _keychain_or_env("SECRET_KEY", "SECRET_KEY")
+SECRET_KEY = _env_or_keychain("SECRET_KEY", "SECRET_KEY")
 
 DEBUG = env.bool("DEBUG", default=False)
 
@@ -107,12 +111,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-DATABASE_URL = _keychain_or_env(
+DATABASE_URL = _env_or_keychain(
     "DATABASE_URL", "DATABASE_URL", default="sqlite:///db.sqlite3"
 )
 DATABASES = {"default": env.db_url_config(DATABASE_URL)}
 
 AUTH_USER_MODEL = "users.User"
+
+# Open sign-up. On by default for dev/tests; production.py turns it off.
+ALLOW_REGISTRATION = env.bool("ALLOW_REGISTRATION", default=True)
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -135,7 +142,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # CORS
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = _keychain_or_env_list(
+CORS_ALLOWED_ORIGINS = _env_or_keychain_list(
     "CORS_ALLOWED_ORIGINS", "CORS_ALLOWED_ORIGINS"
 )
 
@@ -152,25 +159,25 @@ REST_FRAMEWORK = {
 
 
 def _jwt_lifetimes() -> tuple[timedelta, timedelta]:
-    """Resolve JWT lifetimes from the keychain, falling back to safe defaults.
+    """Resolve JWT lifetimes: environment first, then the keychain, then defaults.
 
-    These are read from the keychain so token lifetimes can be tuned per
-    environment without editing code. Falls back to 60 minutes / 7 days when the
-    keychain has not been initialized yet (e.g. during the first migration).
+    Falls back to 60 minutes / 7 days when neither is set or the keychain has not
+    been initialized yet (e.g. during the first migration).
     """
-    try:
-        access_minutes = (
-            keychain_get_int("JWT_ACCESS_TOKEN_LIFETIME_MINUTES", default=60) or 60
-        )
-    except KeychainNotInitializedError:
-        access_minutes = 60
-    try:
-        refresh_days = (
-            keychain_get_int("JWT_REFRESH_TOKEN_LIFETIME_DAYS", default=7) or 7
-        )
-    except KeychainNotInitializedError:
-        refresh_days = 7
-    return timedelta(minutes=access_minutes), timedelta(days=refresh_days)
+
+    def _resolve(name: str, default: int) -> int:
+        value = env.int(name, default=None)
+        if value is None:
+            try:
+                value = keychain_get_int(name, default=None)
+            except KeychainNotInitializedError:
+                value = None
+        return value or default
+
+    return (
+        timedelta(minutes=_resolve("JWT_ACCESS_TOKEN_LIFETIME_MINUTES", 60)),
+        timedelta(days=_resolve("JWT_REFRESH_TOKEN_LIFETIME_DAYS", 7)),
+    )
 
 
 _ACCESS_LIFETIME, _REFRESH_LIFETIME = _jwt_lifetimes()
