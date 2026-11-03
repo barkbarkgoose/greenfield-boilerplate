@@ -30,7 +30,7 @@ journald : app logs.   nginx : access/error logs (rotated by logrotate)
 
 The boilerplate already includes these. They are listed so you know what to check before deploying.
 
-1. **gunicorn** is already in `backend/requirements.txt`.
+1. **gunicorn** is already a dependency in `backend/pyproject.toml`.
 2. **`backend/config/settings/production.py` is already production-ready** (below). Check it and set the matching env vars:
    ```python
    ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")          # required in production, no default
@@ -70,7 +70,7 @@ Everything lives under `/srv/myapp`. The rsync'd code is kept separate from the 
 ├── app/                  rsync target (owned by jake)
 │   ├── backend/          Django project (manage.py, apps/, config/, keychain/, staticfiles/)
 ├── frontend/             built Vue app (contents of frontend/dist)
-├── venv/                 Python virtualenv
+├── venv/                 Python virtualenv (managed by uv)
 ├── data/                 db.sqlite3  (owned by myapp)
 ├── backups/              daily/ weekly/ monthly/  (owned by myapp, mode 700)
 ├── bin/                  manage, backup-db  (small scripts, below)
@@ -86,6 +86,9 @@ Two accounts: **jake** deploys and has sudo; **myapp** is a system user with no 
 ```bash
 sudo apt update
 sudo apt install -y nginx python3-venv sqlite3 certbot python3-certbot-nginx
+
+# uv installs the locked Python dependencies (installs to ~/.local/bin for your user)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # service account: no login shell, no home
 sudo adduser --system --group --no-create-home myapp
@@ -159,14 +162,14 @@ chmod +x /srv/myapp/bin/*
 From your Mac, run the deploy steps in [Deploying updates](#deploying-updates). The first time, after the code is on the box, create the virtualenv and the database:
 
 ```bash
-python3 -m venv /srv/myapp/venv
-/srv/myapp/venv/bin/pip install --no-cache-dir -r /srv/myapp/app/backend/requirements.txt
+UV_PROJECT_ENVIRONMENT=/srv/myapp/venv ~/.local/bin/uv sync --frozen --no-dev \
+  --python /usr/bin/python3 --project /srv/myapp/app/backend
 sudo -u myapp /srv/myapp/bin/manage migrate
 sudo -u myapp /srv/myapp/bin/manage createsuperuser
 /srv/myapp/bin/manage collectstatic --noinput
 ```
 
-The pip install is the slowest, most memory-hungry step. It should succeed with the swap on. (`requirements.txt` includes pytest, which is harmless but unnecessary; install from it as-is for simplicity.)
+`UV_PROJECT_ENVIRONMENT` puts the virtualenv at `/srv/myapp/venv` instead of inside the rsync'd code. `--frozen` installs exactly what `uv.lock` pins, `--no-dev` skips test tooling, and `--python /usr/bin/python3` uses the system Python so the `myapp` user can read the interpreter (a uv-managed Python would live in your home directory).
 
 To start from existing local data, stop the service and copy your `db.sqlite3` to `/srv/myapp/data/`, owned by `myapp`.
 
@@ -301,12 +304,12 @@ HOST=myserver   # your ssh config alias
 APP=/srv/myapp
 
 # 1. tests + frontend build (locally)
-(cd backend && ../.venv/bin/python -m pytest -q)
+(cd backend && uv run pytest -q)
 (cd frontend && npx -y pnpm@11.13.0 run build)
 
 # 2. copy code. Excludes keep secrets, venvs and server-side state out of the transfer
 rsync -az --delete \
-  --exclude='__pycache__/' --exclude='*.pyc' --exclude='.pytest_cache/' \
+  --exclude='__pycache__/' --exclude='*.pyc' --exclude='.pytest_cache/' --exclude='.venv/' \
   --exclude='.env' --exclude='db.sqlite3*' --exclude='keychain.key' --exclude='keychain.json' \
   --exclude='staticfiles/' --exclude='tests/' --exclude='conftest.py' \
   backend "$HOST:$APP/app/"
@@ -316,7 +319,7 @@ rsync -az --delete frontend/dist/ "$HOST:$APP/frontend/"
 ssh -t "$HOST" "
   set -e
   sudo -u myapp $APP/bin/backup-db
-  $APP/venv/bin/pip install --no-cache-dir -q -r $APP/app/backend/requirements.txt
+  UV_PROJECT_ENVIRONMENT=$APP/venv ~/.local/bin/uv sync --frozen --no-dev -q --python /usr/bin/python3 --project $APP/app/backend
   sudo -u myapp $APP/bin/manage migrate --noinput
   $APP/bin/manage collectstatic --noinput
   sudo systemctl restart myapp
@@ -328,7 +331,7 @@ Notes:
 
 - `--delete` removes files on the server that you deleted locally; the `--exclude` entries are also protected from that delete, so `.env`, `staticfiles/` and the DB are safe.
 - The database backup runs **before** every migration, so a bad migration is always recoverable.
-- If dependencies did not change, `pip install` is a quick no-op.
+- If dependencies did not change, `uv sync` is a quick no-op.
 - Check the site after each deploy: `curl -I https://myapp.example.com/` and `journalctl -u myapp -n 30`.
 
 To **roll back**, check out the previous commit locally and run `deploy.sh` again; restore the DB from a backup only if a migration changed the schema.
@@ -464,5 +467,5 @@ Do the simple thing first; move when you see these symptoms:
 |---|---|
 | `Killed` / OOM entries in `sudo journalctl -k \| grep -i oom`, or constant swap use | Resize droplet to 1 GB RAM (DigitalOcean: Droplet → Resize, CPU/RAM only, keeps disk and can be reversed) |
 | Disk over ~70% | Move old backups off-box (monthly pull above) or resize disk (permanent) |
-| Several people using it at once, "database is locked" errors | Move to Postgres (set `DATABASE_URL`, `pip install psycopg[binary]`) |
+| Several people using it at once, "database is locked" errors | Move to Postgres (set `DATABASE_URL`, `uv add "psycopg[binary]"` in `backend/`, then redeploy) |
 | Background jobs you want to survive restarts | Then add a real queue (Celery + Redis) |

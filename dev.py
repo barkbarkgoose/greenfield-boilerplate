@@ -58,7 +58,7 @@ PLACEHOLDER_SECRET_KEYS = {"", "change-me-in-production", "change-me"}
 
 _SECRET_KEY_HELP = (
     "Set SECRET_KEY in backend/.env, export it in your shell, or store it in the\n"
-    "keychain with `python -m keychain set SECRET_KEY=<value>`."
+    "keychain with `cd backend && uv run python -m keychain set SECRET_KEY=<value>`."
 )
 
 
@@ -195,8 +195,8 @@ def stream_logs(process: subprocess.Popen, prefix: str, color: str) -> None:
 
 
 def get_python_executable() -> str:
-    """Return the project virtualenv Python, falling back to ``sys.executable``."""
-    venv_python = ROOT_DIR / ".venv" / "bin" / "python3"
+    """Return the backend virtualenv Python, falling back to ``sys.executable``."""
+    venv_python = BACKEND_DIR / ".venv" / "bin" / "python3"
     if venv_python.exists():
         return str(venv_python)
     return sys.executable

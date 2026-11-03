@@ -23,7 +23,7 @@ try:
 except ImportError as e:  # pragma: no cover - fail fast at first use
     raise ImportError(
         "cryptography is required for the keychain. "
-        "Install it via `pip install -r backend/requirements.txt`."
+        "Run commands through uv from backend/ (`uv run python -m keychain ...`) or run `uv sync` there."
     ) from e
 
 

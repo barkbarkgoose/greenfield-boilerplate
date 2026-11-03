@@ -1,0 +1,31 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Django backend"
+requires-python = ">=3.12"
+dependencies = [
+    # Django
+    "Django>=5.2",
+    "djangorestframework>=3.15",
+    "djangorestframework-simplejwt>=5.4",
+    # CORS & environment
+    "django-cors-headers>=4.4",
+    "django-environ>=0.11",
+    "cryptography>=42",
+    "gunicorn>=22.0",
+    # Database & filters
+    "django-filter>=25.0",
+    # Background tasks (optional, enable if needed)
+    # "celery>=5.4",
+    # "redis>=5.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-django>=4.9",
+]
+
+[tool.uv]
+# This is an application, not an installable package: uv only manages its environment.
+package = false

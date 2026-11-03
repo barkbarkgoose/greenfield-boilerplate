@@ -11,8 +11,8 @@ key in `backend/keychain.key`; neither file is committed.
 ```bash
 cd backend
 
-# Install the cryptography dependency with the rest of the backend requirements.
-uv pip install -r requirements.txt
+# Create backend/.venv and install the locked dependencies (uv run also does this on demand).
+uv sync
 
 # Create the encrypted store and its owner-only key file.
 uv run python -m keychain init --from-example
@@ -31,6 +31,32 @@ in the OS environment or `backend/.env` always overrides the keychain, so any ma
 override a setting without touching the encrypted store. Keep a value in only one place to
 avoid confusion. Back up `backend/keychain.key` securely: without it, `keychain.json`
 cannot be recovered. Rotate it with `uv run python -m keychain rotate-key`.
+
+## Starting a New Project
+
+Copy only the tracked files (no `node_modules`, `.venv`, `.env` or other ignored state)
+into a fresh repo and commit them as one entry:
+
+```bash
+mkdir ../my-project && cd ../my-project && git init
+git -C ../greenfield-boilerplate archive HEAD | tar -x
+git add -A && git commit -m "added boilerplate"
+```
+
+## Preflight
+
+```bash
+./scripts/preflight.sh            # tooling, keychain, then project checks
+./scripts/preflight.sh --skip-remote
+```
+
+Checks that `uv`, `node` and `pnpm` actually run (a stale shim on `PATH` fails), that
+`pnpm` matches the `packageManager` pin, that `frontend/node_modules` exists, and that the
+keychain is initialized with an owner-only key file. Per-project checks go in
+`scripts/preflight_project.py`: list `REQUIRED_SETTINGS` (resolved env first, then
+keychain; secrets are never printed), list `BASE_URL_SETTINGS` that must be a bare
+`scheme://host` with no path, and define `run(pf, args)` to probe external services.
+Keep `scripts/preflight.py` itself generic so it can be synced between projects.
 
 ## Quick Start
 
@@ -51,15 +77,15 @@ you to generate one and saves it to `backend/.env`. For unattended setups, set
 
 ### Backend
 
+Dependencies live in `backend/pyproject.toml` with exact versions pinned in `backend/uv.lock`.
+Run every Python command through `uv run` from `backend/`: it creates `backend/.venv` and syncs
+it to the lockfile first, so there is no separate install or activate step.
+
 ```bash
-cd boilerplate/backend
+cd backend
 
-# Create virtual environment
-uv venv
-source venv/bin/activate  # or .\.venv\Scripts\activate on Windows
-
-# Install dependencies
-uv pip install -r requirements.txt
+# Install dependencies (optional; uv run does this automatically)
+uv sync
 
 # Copy and edit environment
 cp .env.example .env
@@ -80,7 +106,7 @@ This project uses [pnpm](https://pnpm.io). Enable it via Corepack if needed
 (`corepack enable`) and install dependencies:
 
 ```bash
-cd boilerplate/frontend
+cd frontend
 
 # Install dependencies
 pnpm install
@@ -129,7 +155,7 @@ boilerplate/
 
 ```bash
 cd backend
-uv run --with-requirements requirements.txt python -m pytest
+uv run pytest
 ```
 
 
@@ -159,11 +185,21 @@ it needs a restart but no rebuild. Create the first production account with
 See [`docs/vps-hosting.md`](docs/vps-hosting.md) for a minimal single-server setup
 (nginx, gunicorn, systemd, SQLite, rotating backups, logging).
 
+## Dependencies
+
+```bash
+cd backend
+uv add requests            # runtime dependency
+uv add --dev pytest-cov    # dev-only (tests, tooling)
+uv lock --upgrade          # upgrade everything within the pyproject ranges
+```
+
+Commit both `pyproject.toml` and `uv.lock`.
+
 ## Add New Apps
 
 ```bash
 cd backend
-source venv/bin/activate
 uv run python manage.py startapp myapp
 ```
 
