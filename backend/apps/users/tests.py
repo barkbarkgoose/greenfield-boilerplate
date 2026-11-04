@@ -173,5 +173,41 @@ class TestRegistrationFlag:
     def test_register_blocked_when_disabled(self, api_client, settings):
         settings.ALLOW_REGISTRATION = False
         response = api_client.post("/api/v1/auth/register/", self.payload, format="json")
-        assert response.status_code == 403
+        assert response.status_code == 404
         assert not User.objects.filter(email="closed@example.com").exists()
+
+
+@pytest.mark.django_db
+class TestAddUserCommand:
+    def _run(self, monkeypatch, passwords, *args):
+        from django.core.management import call_command
+
+        answers = iter(passwords)
+        monkeypatch.setattr("getpass.getpass", lambda prompt="": next(answers))
+        call_command("add_user", *args)
+
+    def test_creates_a_user_who_can_log_in(self, monkeypatch, api_client):
+        self._run(monkeypatch, [VALID_PASSWORD, VALID_PASSWORD], "me@example.com", "--name", "Me")
+        user = User.objects.get(email="me@example.com")
+        assert not user.is_staff
+        response = api_client.post(
+            "/api/v1/auth/login/",
+            {"email": "me@example.com", "password": VALID_PASSWORD},
+            format="json",
+        )
+        assert response.status_code == 200
+
+    def test_admin_flag(self, monkeypatch):
+        self._run(monkeypatch, [VALID_PASSWORD, VALID_PASSWORD], "boss@example.com", "--name", "Boss", "--admin")
+        assert User.objects.get(email="boss@example.com").is_superuser
+
+    def test_rejects_mismatch_weak_and_duplicate(self, monkeypatch, sample_user):
+        from django.core.management.base import CommandError
+
+        with pytest.raises(CommandError, match="did not match"):
+            self._run(monkeypatch, [VALID_PASSWORD, "other"], "a@example.com", "--name", "A")
+        with pytest.raises(CommandError):
+            self._run(monkeypatch, ["123", "123"], "a@example.com", "--name", "A")
+        with pytest.raises(CommandError, match="already exists"):
+            self._run(monkeypatch, [VALID_PASSWORD, VALID_PASSWORD], sample_user.email, "--name", "Dup")
+        assert not User.objects.filter(email="a@example.com").exists()

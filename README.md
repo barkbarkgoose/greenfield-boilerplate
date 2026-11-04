@@ -164,7 +164,7 @@ uv run pytest
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
 | `/api/v1/auth/config/` | GET | No | Public flags (`allow_registration`) |
-| `/api/v1/auth/register/` | POST | No* | Register user + org (*403 unless `ALLOW_REGISTRATION`) |
+| `/api/v1/auth/register/` | POST | No* | Register user + org (*404 unless `ALLOW_REGISTRATION`) |
 | `/api/v1/auth/login/` | POST | No | Get JWT tokens + user |
 | `/api/v1/auth/refresh/` | POST | No | Refresh access token |
 | `/api/v1/auth/settings/` | GET | Yes | Read current user's settings |
@@ -175,10 +175,22 @@ uv run pytest
 Open sign-up is on in development and **off in production**. `ALLOW_REGISTRATION` defaults
 to `True` in `base.py` and to `False` in `production.py`; set `ALLOW_REGISTRATION=True` in
 the environment / `.env` to override either default. When it is off, `POST
-/api/v1/auth/register/` returns 403 and the frontend hides the register link and page.
-The frontend learns the setting at runtime from `GET /api/v1/auth/config/`, so changing
-it needs a restart but no rebuild. Create the first production account with
-`python manage.py createsuperuser`.
+/api/v1/auth/register/` answers 404 (as if it did not exist) and the frontend hides the
+register link and page. For an app that should never accept sign-ups, leave it off.
+For one you open after testing, flip it on in `.env` and restart; no rebuild is needed
+because the frontend reads the setting at runtime from `GET /api/v1/auth/config/`.
+
+Create accounts from the server with
+`python manage.py add_user EMAIL --name NAME [--admin]` (password is prompted twice).
+That is how the first production account is made.
+
+## Auth guard
+
+The router is default-deny: every page requires a session unless its route has
+`meta: { public: true }` (home, login and register are public). A new page is protected
+until you opt it out. Expired access tokens are renewed from the refresh token, once
+per request, before the user is sent to `/login`. On the API side DRF defaults to
+`IsAuthenticated`, so only views that set `AllowAny` are anonymous.
 
 ## Deploying
 

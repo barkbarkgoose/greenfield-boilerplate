@@ -76,8 +76,8 @@ class RegisterView(APIView):
     def post(self, request):
         if not settings.ALLOW_REGISTRATION:
             return Response(
-                {"detail": "Registration is disabled."},
-                status=status.HTTP_403_FORBIDDEN,
+                {"detail": "Not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

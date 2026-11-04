@@ -52,7 +52,7 @@ The boilerplate already includes these. They are listed so you know what to chec
        "root": {"handlers": ["console"], "level": "INFO"},
    }
    ```
-3. **Registration is closed in production by default.** `production.py` sets `ALLOW_REGISTRATION` from the environment with a default of `False`. The API answers 403 and the frontend hides the register link and page (it asks `GET /api/v1/auth/config/`). Create your first account with `manage createsuperuser`. To open sign-up, put `ALLOW_REGISTRATION=True` in the server `.env` and restart.
+3. **Registration is closed in production by default.** `production.py` sets `ALLOW_REGISTRATION` from the environment with a default of `False`. The API answers 404 and the frontend hides the register link and page (it asks `GET /api/v1/auth/config/`). Create accounts with `sudo -u myapp /srv/myapp/bin/manage add_user EMAIL --name NAME [--admin]`. To open sign-up, put `ALLOW_REGISTRATION=True` in the server `.env` and restart.
 4. **Config precedence is env first, keychain second.** `base.py` now resolves every setting from the environment / `.env` first, then the encrypted keychain, then a default. So a value in `/srv/myapp/.env` or the systemd environment always overrides the keychain. This also applies to the JWT lifetimes.
 5. **Keychain vs `.env` on the server: pick one workflow.**
    - *Keychain (one key to guard):* run `python -m keychain init` once as `myapp`, `set` the values, and store only `keychain.key` in your password vault. `keychain.key` and `keychain.json` are gitignored and excluded from `deploy.sh`, so copy `keychain.json` over once by hand (and again whenever it changes). Keep both outside the rsync'd tree and set `KEYCHAIN_KEY_PATH` / `KEYCHAIN_JSON_PATH` in `.env` to point at them. `.env` then only needs `DJANGO_ENV`, `ALLOWED_HOSTS`, `DATABASE_URL` and anything you want to override.  Anything your code reads with `os.getenv` directly (rather than through Django settings) must be a real environment variable.
@@ -165,7 +165,7 @@ From your Mac, run the deploy steps in [Deploying updates](#deploying-updates). 
 UV_PROJECT_ENVIRONMENT=/srv/myapp/venv ~/.local/bin/uv sync --frozen --no-dev \
   --python /usr/bin/python3 --project /srv/myapp/app/backend
 sudo -u myapp /srv/myapp/bin/manage migrate
-sudo -u myapp /srv/myapp/bin/manage createsuperuser
+sudo -u myapp /srv/myapp/bin/manage add_user YOU@EXAMPLE.COM --name YourName --admin
 /srv/myapp/bin/manage collectstatic --noinput
 ```
 
@@ -209,7 +209,7 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 sudo systemctl enable --now myapp
 systemctl status myapp
-curl -i http://127.0.0.1:8000/api/v1/auth/config/   # expect 200 {"allow_registration": false}
+curl -i http://127.0.0.1:8000/health/   # expect 200 {"status": "ok"}
 ```
 
 ### 7. nginx and HTTPS
