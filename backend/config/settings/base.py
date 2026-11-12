@@ -113,8 +113,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
+# PostgreSQL everywhere. The dev default is a local database named after the repo folder
+# (greenfield-boilerplate -> greenfield_boilerplate) over the local socket; dev.sh creates
+# it. Servers set DATABASE_URL in /srv/NAME/.env. Tests use test_<name>, made and dropped.
+_DEFAULT_DB = "".join(c if c.isalnum() else "_" for c in BASE_DIR.parent.name.lower())
 DATABASE_URL = _env_or_keychain(
-    "DATABASE_URL", "DATABASE_URL", default="sqlite:///db.sqlite3"
+    "DATABASE_URL", "DATABASE_URL", default=f"postgres:///{_DEFAULT_DB}"
 )
 DATABASES = {"default": env.db_url_config(DATABASE_URL)}
 

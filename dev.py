@@ -230,6 +230,49 @@ def _backend_environment(frontend_port: int) -> dict[str, str]:
     return backend_env
 
 
+# Run with the backend's Python: connects to the configured PostgreSQL database and, if it
+# doesn't exist yet, creates it from the server's `postgres` maintenance database.
+ENSURE_DATABASE = """
+import django, psycopg
+from psycopg import sql
+from django.conf import settings
+django.setup()
+db = settings.DATABASES["default"]
+params = {k: db[K] for k, K in (("host", "HOST"), ("port", "PORT"), ("user", "USER"), ("password", "PASSWORD")) if db[K]}
+try:
+    psycopg.connect(dbname=db["NAME"], **params).close()
+except psycopg.OperationalError as error:
+    if f'"{db["NAME"]}" does not exist' not in str(error):
+        raise SystemExit(str(error).strip())
+    with psycopg.connect(dbname="postgres", autocommit=True, **params) as conn:
+        conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db["NAME"])))
+    print(f"created database {db['NAME']}")
+"""
+
+
+def ensure_database(python_bin: str, backend_env: dict[str, str]) -> int:
+    """Make sure PostgreSQL is reachable and the app's database exists."""
+    print(f"\n{MAGENTA}[Setup]{RESET} Checking PostgreSQL...")
+    result = subprocess.run(
+        [python_bin, "-c", ENSURE_DATABASE],
+        cwd=BACKEND_DIR,
+        env=backend_env,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"{RED}[Setup] Can't use the PostgreSQL database.{RESET}")
+        print((result.stderr or result.stdout).rstrip().splitlines()[-1])
+        print(
+            f"{YELLOW}Is PostgreSQL running? `brew services start postgresql@16` "
+            f"(install: `brew install postgresql@16`). Or set DATABASE_URL in backend/.env.{RESET}"
+        )
+        return result.returncode
+    if result.stdout.strip():
+        print(f"{GREEN}[Setup]{RESET} {result.stdout.strip().splitlines()[-1]}")
+    return 0
+
+
 def run_migrations(python_bin: str, backend_env: dict[str, str]) -> int:
     """Apply pending migrations, returning a non-zero code on failure."""
     print(f"\n{MAGENTA}[Setup]{RESET} Checking database migrations...")
@@ -276,6 +319,10 @@ def main() -> int:
 
     python_bin = get_python_executable()
     backend_env = _backend_environment(frontend_port)
+
+    database_code = ensure_database(python_bin, backend_env)
+    if database_code != 0:
+        return database_code
 
     migration_code = run_migrations(python_bin, backend_env)
     if migration_code != 0:

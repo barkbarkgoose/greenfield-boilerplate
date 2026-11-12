@@ -8,12 +8,5 @@ SECRET_KEY = "test-secret-key-not-for-production"
 
 DEBUG = True
 
-# Run fast password hashing and keep the test database in memory.
+# Fast password hashing. The database is PostgreSQL: test_<name>, created and dropped per run.
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
-
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": ":memory:",
-    }
-}

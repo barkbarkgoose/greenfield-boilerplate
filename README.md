@@ -66,7 +66,7 @@ Run both development servers together from the project root:
 ./dev.sh
 ```
 
-The runner applies migrations, selects available ports beginning at `8800` and `5177`,
+The runner creates the database if it doesn't exist, applies migrations, selects available ports beginning at `8800` and `5177`,
 updates the Vite proxy and local CORS origins for those ports, and stops both processes
 when you press Ctrl+C. Set `DEV_BACKEND_PORT_DEFAULT` or `DEV_FRONTEND_PORT_DEFAULT` in
 the keychain to change the starting ports.
@@ -74,6 +74,21 @@ the keychain to change the starting ports.
 If `SECRET_KEY` is missing (or still the `.env.example` placeholder), the runner prompts
 you to generate one and saves it to `backend/.env`. For unattended setups, set
 `DEV_GENERATE_SECRET_KEY=1` to generate it without prompting.
+
+### Database
+
+PostgreSQL in development, tests and production, so the app always runs on the same database.
+Locally that's a Homebrew server (match the major version to your servers; Ubuntu 24.04 has 16):
+
+```bash
+brew install postgresql@16
+brew services start postgresql@16
+```
+
+With no `DATABASE_URL`, the app uses `postgres:///<repo folder name>` (dashes become
+underscores, e.g. `greenfield_boilerplate`) over the local socket as your macOS user, and
+`./dev.sh` creates it. Tests make `test_<name>` and drop it after each run. Set
+`DATABASE_URL` in `backend/.env` (or the keychain) to use another server or name.
 
 ### Backend
 
@@ -243,7 +258,7 @@ the relying party to a parent domain (e.g. `example.com` for `app.example.com`).
 
 ## Deploying
 
-`hosting/` provisions and deploys the app on a Debian/Ubuntu VPS (nginx, gunicorn, systemd, PostgreSQL or SQLite, rotating backups, Let's Encrypt HTTPS, and isolated per-app Python/Node runtimes):
+`hosting/` provisions and deploys the app on a Debian/Ubuntu VPS (nginx, gunicorn, systemd, PostgreSQL, rotating backups, Let's Encrypt HTTPS, and isolated per-app Python/Node runtimes):
 
 1. Run `./hosting/provision.sh`. The first time, it asks for the server, name, domain and repo, and saves the answers in `hosting/.env` (gitignored, see [`hosting/.env.example`](hosting/.env.example)). It then sets up the server and prints a read-only GitHub deploy key.
 2. Add the printed deploy key to GitHub, then run `./hosting/deploy.sh` to test, build, and deploy the pushed commit on the server.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # provision.sh: set up (or repair) this app on a Debian/Ubuntu VPS:
-#   nginx -> gunicorn -> Django -> PostgreSQL or SQLite, with the built Vue app served by nginx.
+#   nginx -> gunicorn -> Django -> PostgreSQL, with the built Vue app served by nginx.
 # Guide: docs/vps-hosting.md
 #
 # Run it from your Mac. It reads the deploy target from hosting/.env (asking for anything
@@ -49,7 +49,7 @@ Settings (each overrides its DEPLOY_* line for this run only):
   --name NAME            service user, /srv/NAME, systemd unit, nginx site, database
   --domain HOST          public hostname (its A record must point at the server for HTTPS)
   --email ADDR           address for Let's Encrypt expiry notices
-  --db KIND              postgres (on this server) | sqlite | external (DATABASE_URL in .env)
+  --db KIND              postgres (on this server) | external (DATABASE_URL in .env)
   --repo URL             git SSH URL the server deploys from, or none to deploy from the Mac
   --branch NAME          branch bin/deploy deploys by default                  [main]
   --port N               local gunicorn port, one per app                      [first free from 8000]
@@ -83,7 +83,7 @@ RE_HOST='^[A-Za-z0-9._@-]+$'
 RE_NAME='^[a-z][a-z0-9_-]{1,30}$'
 RE_DOMAIN='^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$'
 RE_EMAIL='^[^@ ]+@[^@ ]+\.[^@ ]+$'
-RE_DB='^(sqlite|postgres|external)$'
+RE_DB='^(postgres|external)$'
 RE_REPO='^(none|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[A-Za-z0-9._/-]+)$'
 RE_BRANCH='^[A-Za-z0-9._/-]+$'
 RE_PYVER='^3\.[0-9]{1,2}(\.[0-9]{1,2})?$'
@@ -118,7 +118,7 @@ prompt_for() {
     NAME)   echo "Project name (lowercase letters, digits, - _)" ;;
     DOMAIN) echo "Public domain (e.g. app.example.com)" ;;
     EMAIL)  echo "Email for Let's Encrypt notices" ;;
-    DB)     echo "Database: postgres (on the server), sqlite or external" ;;
+    DB)     echo "Database: postgres (on the server) or external" ;;
     REPO)   echo "Git SSH URL the server deploys from (none = deploy from the Mac)" ;;
     BRANCH) echo "Branch to deploy by default" ;;
   esac
@@ -476,11 +476,10 @@ node_install() {
 # ---------------------------------------------------------------- steps
 step_packages() {
   local p missing="" pkgs="nginx python3 python3-venv certbot python3-certbot-nginx rsync curl ca-certificates git xz-utils"
-  case $DB in
-    sqlite)   pkgs="$pkgs sqlite3" ;;
-    postgres) pkgs="$pkgs postgresql" ;;
-    external) pkgs="$pkgs postgresql-client" ;;
-  esac
+  # The PostgreSQL server holds the app's database (postgres) and the test databases of git
+  # deploys, which run the tests here. An external database with rsync deploys needs the client.
+  if [ "$DB" = postgres ] || [ "$REPO" != none ]; then pkgs="$pkgs postgresql"
+  else pkgs="$pkgs postgresql-client"; fi
   for p in $pkgs; do
     dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"
   done
@@ -565,8 +564,6 @@ step_swap() {
 
 step_database() {
   case $DB in
-    sqlite)
-      say "SQLite at $ROOT/data/db.sqlite3 (the first migrate creates it)" ;;
     external)
       say "external PostgreSQL: the app uses DATABASE_URL from .env as-is" ;;
     postgres)
@@ -586,6 +583,18 @@ step_database() {
         say "created database '$NAME' owned by '$NAME'"
       fi ;;
   esac
+  # bin/deploy runs the tests as you, and they create and drop test_NAME. You have sudo, so
+  # CREATEDB adds nothing you couldn't already do; the app's role still can't create databases.
+  if [ "$REPO" != none ]; then
+    sudo systemctl enable --now postgresql >/dev/null 2>&1
+    case $(as_postgres psql -tAc "SELECT rolcreatedb FROM pg_roles WHERE rolname = '$DEPLOY_USER'") in
+      t) say "role '$DEPLOY_USER' (deploy tests) exists" ;;
+      f) as_postgres psql -qc "ALTER ROLE \"$DEPLOY_USER\" CREATEDB"
+         say "role '$DEPLOY_USER' may now create test databases" ;;
+      *) as_postgres createuser --no-superuser --createdb --no-createrole "$DEPLOY_USER"
+         say "created role '$DEPLOY_USER' for deploy tests (test_$NAME)" ;;
+    esac
+  fi
 }
 
 step_env() {
@@ -602,7 +611,6 @@ step_env() {
   env_default ALLOWED_HOSTS "$DOMAIN"
   env_default CSRF_TRUSTED_ORIGINS "https://$DOMAIN"
   case $DB in
-    sqlite)   env_default DATABASE_URL "sqlite:///$ROOT/data/db.sqlite3" ;;
     # No host in the URL: local socket. PGHOST pins the socket folder (pip's psycopg wheels
     # may default to /tmp, which PrivateTmp hides) and works with any URL parser; an
     # encoded host (%2F...) is not decoded by django-environ. Older runs wrote that form.
@@ -622,7 +630,7 @@ step_env() {
   esac
   scheme=$(sed -n 's/^DATABASE_URL=\([a-z0-9+]*\):.*/\1/p' "$ENV_FILE" | head -n 1)
   case "$DB:$scheme" in
-    sqlite:sqlite*|postgres:postgres*|external:postgres*|external:) ;;
+    postgres:postgres*|external:postgres*|external:) ;;
     *) warn "DATABASE_URL in .env is a $scheme URL but --db is $DB; edit .env if you are switching" ;;
   esac
 
@@ -658,20 +666,6 @@ trap 'rm -f "$tmp"' EXIT
 
 EOF
   case $DB in
-    sqlite) cat <<'EOF'
-DB=/srv/@NAME@/data/db.sqlite3
-if [ ! -f "$DB" ]; then echo "backup skipped: no database yet"; exit 0; fi
-
-sqlite3 "$DB" ".backup '$tmp'"
-if [ "$(sqlite3 "$tmp" 'PRAGMA integrity_check;')" != "ok" ]; then
-  echo "backup FAILED: integrity check did not pass" >&2
-  exit 1
-fi
-
-file="db-$stamp.sqlite3.gz"
-gzip -c "$tmp" > "$DEST/daily/$file"
-EOF
-    ;;
     postgres) cat <<'EOF'
 # peer authentication over the local socket: this runs as @NAME@, which owns the database
 pg_dump -Fc -f "$tmp" @NAME@
@@ -800,6 +794,10 @@ if ! UV_PYTHON_INSTALL_DIR="$UV_PYTHON_DIR" /usr/local/bin/uv python find "$PYTH
   sudo chmod -R a+rX "$UV_PYTHON_DIR"
 fi
 
+# The tests use the local PostgreSQL as you (provision gave your role CREATEDB): Django makes
+# test_NAME from this URL and drops it after. PGHOST is the socket folder, as in .env.
+test_db=(DATABASE_URL="postgres:///$NAME" PGHOST=/var/run/postgresql)
+
 # Tests and the build run in a memory-capped scope: past BUILD_MEMORY_MAX they swap their own
 # memory, not the live app's, and past BUILD_SWAP_MAX only they are killed. Low CPU/IO priority.
 limited() {
@@ -807,12 +805,12 @@ limited() {
   if command -v systemd-run >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     sudo systemd-run --quiet --scope --collect \
       -p MemoryMax="$BUILD_MEMORY_MAX" -p MemorySwapMax="$BUILD_SWAP_MAX" -- \
-      runuser -u "$(id -un)" -- env HOME="$HOME" PATH="$run_path" \
+      runuser -u "$(id -un)" -- env HOME="$HOME" PATH="$run_path" "${test_db[@]}" \
       UV_PYTHON_INSTALL_DIR="$UV_PYTHON_DIR" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 CI=1 \
       nice -n 10 ionice -c 3 bash -c "$1"
   else
     printf '  (no systemd: running without a memory cap)\n'
-    env PATH="$run_path" UV_PYTHON_INSTALL_DIR="$UV_PYTHON_DIR" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 CI=1 \
+    env PATH="$run_path" "${test_db[@]}" UV_PYTHON_INSTALL_DIR="$UV_PYTHON_DIR" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 CI=1 \
       nice -n 10 bash -c "$1"
   fi
 }
@@ -870,9 +868,6 @@ else
     --no-cache -q -r "$LIVE_BACKEND/requirements.txt"
 fi
 sudo -u "$NAME" "$ROOT/bin/manage" migrate --noinput | tail -n 1
-for f in "$ROOT"/data/db.sqlite3*; do
-  if [ -e "$f" ]; then sudo chown "$NAME:$NAME" "$f"; sudo chmod 600 "$f"; fi
-done
 "$ROOT/bin/manage" collectstatic --noinput | tail -n 1
 for d in app frontend venv; do
   find "$ROOT/$d" -xdev ! -type l -perm /022 -exec chmod go-w {} + 2>/dev/null || true
@@ -1214,8 +1209,8 @@ step_app() {
     skip "gunicorn is not installed: add it to pyproject.toml, deploy, re-run"
     return 0
   fi
-  if [ "$DB" != sqlite ] && ! "$ROOT/venv/bin/python" -c 'import psycopg' 2>/dev/null \
-                         && ! "$ROOT/venv/bin/python" -c 'import psycopg2' 2>/dev/null; then
+  if ! "$ROOT/venv/bin/python" -c 'import psycopg' 2>/dev/null \
+     && ! "$ROOT/venv/bin/python" -c 'import psycopg2' 2>/dev/null; then
     skip "no PostgreSQL driver: add psycopg[binary] to pyproject.toml, deploy, re-run"
     return 0
   fi
@@ -1224,11 +1219,6 @@ step_app() {
     return 0
   fi
   sudo -u "$NAME" "$ROOT/bin/manage" migrate --noinput | tail -n 1
-  if [ "$DB" = sqlite ]; then
-    for f in "$ROOT"/data/db.sqlite3*; do
-      if [ -e "$f" ]; then sudo chown "$NAME:$NAME" "$f"; sudo chmod 600 "$f"; fi
-    done
-  fi
   "$ROOT/bin/manage" collectstatic --noinput | tail -n 1
   tidy_modes
   users=$(sudo -u "$NAME" "$ROOT/bin/manage" shell -c 'from django.contrib.auth import get_user_model as g; print(g().objects.count())' 2>/dev/null | tail -n 1 || true)
@@ -1283,8 +1273,6 @@ check_path() { # check_path PATH MODE OWNER:GROUP [optional]
 
 check_database() {
   case $DB in
-    sqlite)
-      for f in "$ROOT"/data/db.sqlite3*; do check_path "$f" 600 "$NAME:$NAME" optional; done ;;
     postgres)
       if (cd / && sudo -u "$NAME" psql -d "$NAME" -tAc 'SELECT 1') 2>/dev/null | grep -qx 1; then
         check_ok "PostgreSQL database '$NAME' reachable as '$NAME'"

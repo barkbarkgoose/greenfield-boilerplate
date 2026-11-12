@@ -124,6 +124,14 @@ def check_tools() -> None:
             continue
         ok(f"{tool} {proc.stdout.strip()}")
 
+    # The default database is a local PostgreSQL over the socket (dev.sh creates it).
+    if not shutil.which("pg_isready"):
+        fail("PostgreSQL not found on PATH — `brew install postgresql@16`")
+    elif subprocess.run(["pg_isready", "-q"]).returncode != 0:
+        fail("PostgreSQL is not accepting connections — `brew services start postgresql@16`")
+    else:
+        ok("PostgreSQL accepting connections")
+
     pinned = _pinned_pnpm()
     if pinned and shutil.which("pnpm"):
         proc = subprocess.run(["pnpm", "--version"], capture_output=True, text=True, cwd=FRONTEND_DIR)

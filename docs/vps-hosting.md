@@ -1,6 +1,6 @@
 # Hosting on a VPS
 
-`hosting/provision.sh` and `hosting/deploy.sh` set up and deploy this Django + Vue app on a Debian/Ubuntu server. nginx serves the built Vue app and proxies `/api/`, the Django admin (at a random path) and `/health/` to gunicorn, systemd keeps gunicorn running, and cron runs a rotating nightly database backup. The database is PostgreSQL on the same server (default), SQLite, or an external managed PostgreSQL.
+`hosting/provision.sh` and `hosting/deploy.sh` set up and deploy this Django + Vue app on a Debian/Ubuntu server. nginx serves the built Vue app and proxies `/api/`, the Django admin (at a random path) and `/health/` to gunicorn, systemd keeps gunicorn running, and cron runs a rotating nightly database backup. The database is PostgreSQL, on the same server (default) or an external managed one.
 
 Everything app-specific lives in this repo. The server only needs to be a Debian/Ubuntu box you can `ssh` into as a normal user with `sudo` (key login). Hardening the box itself (sshd settings, firewall policy, automatic updates, your dotfiles) is general server setup and isn't covered here.
 
@@ -8,7 +8,7 @@ Everything app-specific lives in this repo. The server only needs to be a Debian
 Browser ──https──▶ nginx (80/443)
                     ├─ /                  /srv/NAME/frontend        (built Vue app)
                     ├─ /static/           BACKEND/staticfiles       (Django admin css/js)
-                    └─ /api/ /ADMIN_URL/ /health/ ──▶ gunicorn 127.0.0.1:PORT ──▶ Django ──▶ PostgreSQL / SQLite
+                    └─ /api/ /ADMIN_URL/ /health/ ──▶ gunicorn 127.0.0.1:PORT ──▶ Django ──▶ PostgreSQL
 systemd  : keeps gunicorn running, restarts it on crash/reboot
 cron     : nightly DB backup and JWT blacklist cleanup, plus any jobs in /srv/NAME/cron.local
 journald : app logs.   nginx : access/error logs (rotated by logrotate)
@@ -44,7 +44,7 @@ A flag (e.g. `--workers 4`) overrides its setting for that run only. For a secon
 | `DEPLOY_NAME` | `--name` | asked (folder name) | service user, `/srv/NAME`, systemd unit, nginx site, Postgres role and database |
 | `DEPLOY_DOMAIN` | `--domain` | asked | public hostname (its `A` record must point at the server before certbot runs) |
 | `DEPLOY_EMAIL` | `--email` | asked | Let's Encrypt expiry notices |
-| `DEPLOY_DB` | `--db` | `postgres` | `postgres`, `sqlite`, or `external` |
+| `DEPLOY_DB` | `--db` | `postgres` | `postgres` or `external` |
 | `DEPLOY_REPO` | `--repo` | `origin` | git SSH URL the server deploys from, or `none` to deploy from the Mac |
 | `DEPLOY_BRANCH` | `--branch` | `main` | branch `deploy.sh` deploys when given no ref |
 | `DEPLOY_PORT` | `--port` | first free from 8000 | local gunicorn port, unique per app on the server |
@@ -103,22 +103,24 @@ After that, day-to-day deploys are just `git push && ./hosting/deploy.sh`.
 | `DEPLOY_DB` | Use when | How the app connects | Backups |
 |---|---|---|---|
 | `postgres` (default) | most apps | local socket, role and database both named `NAME`, peer auth (no password) | `pg_dump -Fc` |
-| `sqlite` | tiny single-user apps on a 512 MB box | file `/srv/NAME/data/db.sqlite3` | SQLite online `.backup`, gzipped |
 | `external` | managed PostgreSQL (DigitalOcean, etc.) | `DATABASE_URL` you put in `/srv/NAME/.env` | `pg_dump -Fc` over the network |
 
 - **postgres:** lives in `/var/lib/postgresql`. Because the PostgreSQL role matches the service user `NAME`, only `NAME` can log in over the local Unix socket: no password exists to leak, and other apps on the same server cannot access it.
 - **external:** the first run adds a commented `DATABASE_URL=` placeholder to `/srv/NAME/.env` and skips migrations until you fill it in.
+- **Deploy tests** (git deploys) run against the server's own PostgreSQL either way, as you: provision gives your role `CREATEDB`, and the tests create `test_NAME` and drop it afterwards. You have sudo, so that adds nothing you couldn't already do; the app's role still can't create databases.
+
+Development and tests use PostgreSQL too (see the README), so there is no SQLite option.
 
 ## What `hosting/provision.sh` does
 
 | # | Step | Does |
 |---|---|---|
-| 1 | Packages | `nginx`, `python3`, `certbot` + `python3-certbot-nginx`, `rsync`, `curl`, `git`, `xz-utils`, plus `postgresql`, `sqlite3`, or `postgresql-client` |
+| 1 | Packages | `nginx`, `python3`, `certbot` + `python3-certbot-nginx`, `rsync`, `curl`, `git`, `xz-utils`, plus `postgresql` (or only `postgresql-client` for an external database with rsync deploys) |
 | 2 | Runtimes | `uv` (`/usr/local/bin/uv`), the project's Python in `/opt/uv/python`, and (when deploying from git) the project's Node major in `/usr/local/lib/node-MAJOR` with `corepack` enabled |
 | 3 | Service account | system user `NAME`, no login, no home |
 | 4 | Folders and venv | `/srv/NAME/...` with strict owners/modes; creates `/srv/NAME/venv` |
 | 5 | Swap | `/swapfile` of `SWAP_MB` (1024 MB), unless ≥512 MB swap exists |
-| 6 | Database | `postgres`: role and database `NAME`. `sqlite` / `external`: nothing to create here |
+| 6 | Database | `postgres`: role and database `NAME`. Git deploys: a role for you with `CREATEDB`, for the tests |
 | 7 | Secrets file | creates `/srv/NAME/.env` (`you:NAME`, `640`), generates `SECRET_KEY`, `SETTINGS_ENCRYPTION_KEY` and `ADMIN_URL` once, sets `DJANGO_ENV`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL` (and `PGHOST` for local Postgres), and writes the `DEPLOY_*` settings |
 | 8 | Helper scripts | `bin/manage` (`manage.py` with `.env` loaded) and `bin/backup-db` |
 | 9 | Deploy from git | read-only deploy key `~/.ssh/deploy_NAME` + ssh alias, `staging/`, `bin/deploy` |
@@ -139,7 +141,7 @@ After that, day-to-day deploys are just `git push && ./hosting/deploy.sh`.
 │   └── backend/          manage.py, pyproject.toml, uv.lock, staticfiles/
 ├── frontend/             built Vue app (contents of frontend/dist/)           (you)
 ├── venv/                 production Python virtualenv (links /opt/uv/python)  (you)
-├── data/                 db.sqlite3 for sqlite; only folder NAME may write    (NAME)
+├── data/                 the only folder the running app may write            (NAME)
 ├── backups/              daily/ weekly/ monthly/, mode 700                    (NAME)
 ├── bin/                  manage, backup-db, deploy                            (you)
 ├── staging/              git clone, staging venv and node_modules             (you)
@@ -241,7 +243,7 @@ Jobs every deployment of the project needs go in `JOBS` at the top of `hosting/p
 
 ## Backups
 
-`bin/backup-db` keeps **4 daily, 4 weekly (Sundays), and 6 monthly (1st of the month)** copies in `/srv/NAME/backups` (mode `700`, owned by `NAME`). It runs nightly at `03:15` server time and before every deploy, verifying each copy (`pg_restore -l` or SQLite `PRAGMA integrity_check`) before keeping it.
+`bin/backup-db` keeps **4 daily, 4 weekly (Sundays), and 6 monthly (1st of the month)** copies in `/srv/NAME/backups` (mode `700`, owned by `NAME`). It runs nightly at `03:15` server time and before every deploy, verifying each copy (`pg_restore -l`) before keeping it.
 
 ```bash
 sudo -u NAME /srv/NAME/bin/backup-db        # run a backup now
@@ -253,9 +255,6 @@ sudo ls -lh /srv/NAME/backups/daily
 ```bash
 # postgres (local)
 sudo -u NAME pg_restore --clean --if-exists -d NAME /srv/NAME/backups/daily/db-YYYY-MM-DD.dump
-
-# sqlite
-gunzip -c /srv/NAME/backups/daily/db-YYYY-MM-DD.sqlite3.gz | sudo -u NAME tee /srv/NAME/data/db.sqlite3 >/dev/null
 
 # external: as NAME, with DATABASE_URL loaded from .env
 sudo -u NAME bash -c 'set -a; . /srv/NAME/.env; pg_restore --clean --if-exists --no-owner -d "$DATABASE_URL" /srv/NAME/backups/daily/db-YYYY-MM-DD.dump'
@@ -294,7 +293,6 @@ sudo -u NAME psql NAME                                                   # Postg
 | `staging` | 750 | you |
 | `.env` | 640 | you:NAME |
 | `data` | 755 | NAME |
-| `data/db.sqlite3*` (sqlite) | 600 | NAME |
 | `backups` and everything in it | 700 / 600 | NAME |
 | `/etc/systemd/system/NAME.service`, `/etc/nginx/sites-available/NAME`, `/etc/nginx/snippets/NAME-proxy.conf`, `/etc/cron.d/NAME` | 644 | root |
 | `/swapfile` | 600 | root |
