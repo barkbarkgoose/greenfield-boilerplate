@@ -61,7 +61,9 @@ api.interceptors.response.use(
     const isAuthAttempt =
       requestUrl.includes('/auth/login/') ||
       requestUrl.includes('/auth/register/') ||
-      requestUrl.includes('/auth/refresh/')
+      requestUrl.includes('/auth/refresh/') ||
+      requestUrl.includes('/auth/logout/') ||
+      requestUrl.includes('/auth/passkeys/login/')
 
     // An expired access token: renew it once and replay the request.
     if (status === 401 && !isAuthAttempt && config && !config._retriedAfterRefresh) {

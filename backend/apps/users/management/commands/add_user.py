@@ -30,7 +30,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--admin",
             action="store_true",
-            help="Also allow access to the Django admin at /admin/.",
+            help="Staff: may use the Django admin (at ADMIN_URL) and must add a passkey on first sign-in.",
         )
 
     def handle(self, *args, email: str, name: str, admin: bool, **options):

@@ -73,10 +73,12 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "django_filters",
     "corsheaders",
     "apps.organizations",
     "apps.users",
+    "apps.passkeys",
 ]
 
 MIDDLEWARE = [
@@ -120,6 +122,23 @@ AUTH_USER_MODEL = "users.User"
 
 # Open sign-up. On by default for dev/tests; production.py turns it off.
 ALLOW_REGISTRATION = env.bool("ALLOW_REGISTRATION", default=True)
+
+# Site-wide login. True (the default): every page and API view needs a session, apart
+# from signing in. False: views marked PublicReadOnly (and routes marked public in the
+# frontend) can be read anonymously; writes always need a session.
+REQUIRE_LOGIN = env.bool("REQUIRE_LOGIN", default=True)
+
+# Where the Django admin lives, kept off the /admin/ every scanner tries. Production gets a
+# random one from hosting/provision.sh. Staff reach it by signing in with a passkey.
+ADMIN_URL = env("ADMIN_URL", default="django-admin/").strip("/") + "/"
+
+# Passkeys (WebAuthn). The relying party ID is the hostname the browser is on unless set
+# here; it must be that hostname or a parent domain of it, and passkeys only work for it.
+PASSKEY_RP_ID = env("PASSKEY_RP_ID", default="")
+PASSKEY_RP_NAME = env("PASSKEY_RP_NAME", default="App")
+
+# Sessions are only used by the Django admin (the app uses JWTs), so keep them short.
+SESSION_COOKIE_AGE = 12 * 60 * 60
 
 AUTH_PASSWORD_VALIDATORS = [
     {

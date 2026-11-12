@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Navbar from '@/components/Navbar.vue'
+import PasskeyPrompt from '@/components/PasskeyPrompt.vue'
 </script>
 
 <template>
@@ -8,5 +9,6 @@ import Navbar from '@/components/Navbar.vue'
     <main>
       <router-view />
     </main>
+    <PasskeyPrompt />
   </div>
 </template>

@@ -163,12 +163,17 @@ uv run pytest
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/v1/auth/config/` | GET | No | Public flags (`allow_registration`) |
+| `/api/v1/auth/config/` | GET | No | Public flags (`allow_registration`, `require_login`) |
 | `/api/v1/auth/register/` | POST | No* | Register user + org (*404 unless `ALLOW_REGISTRATION`) |
-| `/api/v1/auth/login/` | POST | No | Get JWT tokens + user |
+| `/api/v1/auth/login/` | POST | No | Get JWT tokens + user (403 `passkey_required` for staff who have a passkey) |
 | `/api/v1/auth/refresh/` | POST | No | Refresh access token |
+| `/api/v1/auth/logout/` | POST | No | Revoke the refresh token (and end an admin session) |
 | `/api/v1/auth/settings/` | GET | Yes | Read current user's settings |
 | `/api/v1/auth/settings/` | PATCH | Yes | Update current user's settings |
+| `/api/v1/auth/passkeys/` | GET | Yes | List your passkeys |
+| `/api/v1/auth/passkeys/<id>/` | DELETE | Yes | Remove a passkey (staff keep at least one) |
+| `/api/v1/auth/passkeys/register/begin/`, `finish/` | POST | Yes | Add a passkey |
+| `/api/v1/auth/passkeys/login/begin/`, `finish/` | POST | No | Sign in with a passkey: same response as `login/` |
 
 ## Registration
 
@@ -182,15 +187,59 @@ because the frontend reads the setting at runtime from `GET /api/v1/auth/config/
 
 Create accounts from the server with
 `python manage.py add_user EMAIL --name NAME [--admin]` (password is prompted twice).
-That is how the first production account is made.
+That is how the first production account is made; with `--admin` it must add a passkey
+at its first sign-in (see below).
 
-## Auth guard
+## Auth guard and the login switch
 
-The router is default-deny: every page requires a session unless its route has
-`meta: { public: true }` (home, login and register are public). A new page is protected
-until you opt it out. Expired access tokens are renewed from the refresh token, once
-per request, before the user is sent to `/login`. On the API side DRF defaults to
-`IsAuthenticated`, so only views that set `AllowAny` are anonymous.
+`REQUIRE_LOGIN` (default `True`) decides whether anonymous visitors see anything:
+
+| | `REQUIRE_LOGIN=True` (default) | `REQUIRE_LOGIN=False` |
+|---|---|---|
+| Routes with `meta: { public: true }` | sign-in required | open to visitors |
+| API views with `permission_classes = [PublicReadOnly]` | sign-in required | visitors may `GET`; writes need a sign-in |
+| Everything else | sign-in required | sign-in required |
+| Login and register pages, `/api/v1/auth/` sign-in endpoints, `/health/` | open | open |
+
+Set it in `.env` and restart; the frontend reads it at runtime from `/api/v1/auth/config/`
+and treats a missing answer as `True`. Both sides are default-deny: a new page or view is
+private until you opt it in, and opting in only takes effect while the switch is off. The
+router guard is only for the UI; the API's permissions are what protect the data.
+
+```python
+from apps.users.permissions import PublicReadOnly
+
+class ArticleList(APIView):
+    permission_classes = [PublicReadOnly]   # public reading when REQUIRE_LOGIN=False
+```
+
+Expired access tokens are renewed from the refresh token, once per request, before the
+user is sent to `/login`. Logging out revokes the refresh token (simplejwt's blacklist);
+the access token itself lives on until it expires (60 minutes by default).
+
+## Passkeys and admin accounts
+
+Any user can add passkeys (Profile & settings) and sign in with one instead of their
+password. After a password sign-in, users without a passkey are offered one; "Don't ask
+again" is saved in their settings.
+
+Staff accounts (`is_staff`, e.g. `add_user --admin`) must use one:
+
+- The first password sign-in is followed by a dialog to add a passkey that can't be
+  dismissed (only logged out of). After that, the password alone is refused.
+- The Django admin lives at `ADMIN_URL` (`django-admin/` in development; a random path on
+  servers set up by `hosting/provision.sh`) and has no password form. It sends staff to
+  the app's sign-in, and a passkey sign-in opens the admin session.
+- For admin-only API views use `IsPasskeyAdmin` (staff who signed in with a passkey)
+  rather than `IsAdminUser`.
+- Staff can't remove their last passkey. If it's lost:
+  `python manage.py reset_passkeys EMAIL` removes the user's passkeys and revokes their
+  sessions, so the next password sign-in asks for a new one.
+
+Passkeys only work over HTTPS or on `localhost` (so use `http://localhost:5177` in
+development, not `127.0.0.1` or a LAN address), and each one belongs to the hostname it
+was created on. `PASSKEY_RP_NAME` sets the name browsers show; `PASSKEY_RP_ID` can pin
+the relying party to a parent domain (e.g. `example.com` for `app.example.com`).
 
 ## Deploying
 

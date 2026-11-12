@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import type { ApiKeyStatus } from '@/types/auth'
+import type { ApiKeyStatus, Passkey } from '@/types/auth'
+import { deletePasskey, listPasskeys, passkeyErrorMessage, passkeysSupported } from '@/services/passkeys'
 import { useAuthStore } from '@/stores/auth'
 
 interface Provider {
@@ -107,7 +108,61 @@ async function clearProviderKey(provider: string) {
   savingProvider.value = null
 }
 
-onMounted(loadSettings)
+const passkeys = ref<Passkey[]>([])
+const passkeyName = ref('')
+const passkeyBusy = ref(false)
+const passkeyMessage = ref('')
+const passkeyError = ref('')
+const canUsePasskey = passkeysSupported()
+
+function formatDate(value: string | null): string {
+  return value ? new Date(value).toLocaleDateString(undefined, { dateStyle: 'medium' }) : 'Never'
+}
+
+async function loadPasskeys() {
+  try {
+    passkeys.value = await listPasskeys()
+    authStore.setHasPasskey(passkeys.value.length > 0)
+  } catch {
+    passkeyError.value = 'Could not load your passkeys.'
+  }
+}
+
+async function addPasskey() {
+  passkeyBusy.value = true
+  passkeyMessage.value = ''
+  passkeyError.value = ''
+  try {
+    await authStore.addPasskey(passkeyName.value.trim())
+    passkeyName.value = ''
+    passkeyMessage.value = 'Passkey added.'
+    await loadPasskeys()
+  } catch (error: unknown) {
+    passkeyError.value = passkeyErrorMessage(error) ?? ''
+  } finally {
+    passkeyBusy.value = false
+  }
+}
+
+async function removePasskey(passkey: Passkey) {
+  passkeyBusy.value = true
+  passkeyMessage.value = ''
+  passkeyError.value = ''
+  try {
+    await deletePasskey(passkey.id)
+    passkeyMessage.value = `Removed "${passkey.name}".`
+    await loadPasskeys()
+  } catch (error: unknown) {
+    passkeyError.value = passkeyErrorMessage(error) ?? ''
+  } finally {
+    passkeyBusy.value = false
+  }
+}
+
+onMounted(() => {
+  loadSettings()
+  loadPasskeys()
+})
 </script>
 
 <template>
@@ -190,6 +245,53 @@ onMounted(loadSettings)
               <p v-if="preferencesError" class="text-sm font-medium text-red-700">{{ preferencesError }}</p>
             </div>
           </form>
+        </section>
+
+        <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:col-span-2 sm:p-8">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wider text-primary">Security</p>
+            <h2 class="mt-2 text-xl font-semibold text-slate-950">Passkeys</h2>
+            <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              Sign in with your fingerprint, face or screen lock instead of your password.
+              <template v-if="user?.is_staff">Admin accounts must keep at least one.</template>
+            </p>
+          </div>
+
+          <ul v-if="passkeys.length" class="mt-6 divide-y divide-slate-100 rounded-2xl border border-slate-200">
+            <li v-for="passkey in passkeys" :key="passkey.id" class="flex items-center justify-between gap-4 px-5 py-4">
+              <div class="min-w-0">
+                <p class="flex items-center gap-2 truncate font-semibold text-slate-900">
+                  {{ passkey.name }}
+                  <span v-if="passkey.backed_up" class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">Synced</span>
+                </p>
+                <p class="mt-0.5 text-xs text-slate-500">
+                  Added {{ formatDate(passkey.created_at) }} · Last used {{ formatDate(passkey.last_used_at) }}
+                </p>
+              </div>
+              <button type="button" :disabled="passkeyBusy" class="shrink-0 text-xs font-semibold text-slate-500 hover:text-red-700 disabled:opacity-50" @click="removePasskey(passkey)">
+                Remove
+              </button>
+            </li>
+          </ul>
+          <p v-else class="mt-6 text-sm text-slate-500">You don't have any passkeys yet.</p>
+
+          <form v-if="canUsePasskey" class="mt-5 flex flex-col gap-2 sm:flex-row" @submit.prevent="addPasskey">
+            <label for="passkey-name" class="sr-only">Passkey name</label>
+            <input
+              id="passkey-name"
+              v-model="passkeyName"
+              type="text"
+              maxlength="100"
+              placeholder="Name (e.g. MacBook, Phone)"
+              class="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-4 focus:ring-primary/10 sm:max-w-xs"
+            />
+            <button type="submit" :disabled="passkeyBusy" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
+              {{ passkeyBusy ? 'Working...' : 'Add a passkey' }}
+            </button>
+          </form>
+          <p v-else class="mt-5 text-sm text-amber-700">This browser can't use passkeys here (they need https or localhost).</p>
+          <p v-if="passkeyMessage" class="mt-3 text-sm font-medium text-emerald-700">{{ passkeyMessage }}</p>
+          <p v-if="passkeyError" class="mt-3 text-sm font-medium text-red-700">{{ passkeyError }}</p>
         </section>
 
         <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:col-span-2 sm:p-8">

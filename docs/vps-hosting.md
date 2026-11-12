@@ -1,6 +1,6 @@
 # Hosting on a VPS
 
-`hosting/provision.sh` and `hosting/deploy.sh` set up and deploy this Django + Vue app on a Debian/Ubuntu server. nginx serves the built Vue app and proxies `/api/`, `/admin/` and `/health/` to gunicorn, systemd keeps gunicorn running, and cron runs a rotating nightly database backup. The database is PostgreSQL on the same server (default), SQLite, or an external managed PostgreSQL.
+`hosting/provision.sh` and `hosting/deploy.sh` set up and deploy this Django + Vue app on a Debian/Ubuntu server. nginx serves the built Vue app and proxies `/api/`, the Django admin (at a random path) and `/health/` to gunicorn, systemd keeps gunicorn running, and cron runs a rotating nightly database backup. The database is PostgreSQL on the same server (default), SQLite, or an external managed PostgreSQL.
 
 Everything app-specific lives in this repo. The server only needs to be a Debian/Ubuntu box you can `ssh` into as a normal user with `sudo` (key login). Hardening the box itself (sshd settings, firewall policy, automatic updates, your dotfiles) is general server setup and isn't covered here.
 
@@ -8,9 +8,9 @@ Everything app-specific lives in this repo. The server only needs to be a Debian
 Browser ──https──▶ nginx (80/443)
                     ├─ /                  /srv/NAME/frontend        (built Vue app)
                     ├─ /static/           BACKEND/staticfiles       (Django admin css/js)
-                    └─ /api/ /admin/ /health/ ──▶ gunicorn 127.0.0.1:PORT ──▶ Django ──▶ PostgreSQL / SQLite
+                    └─ /api/ /ADMIN_URL/ /health/ ──▶ gunicorn 127.0.0.1:PORT ──▶ Django ──▶ PostgreSQL / SQLite
 systemd  : keeps gunicorn running, restarts it on crash/reboot
-cron     : nightly DB backup, plus any jobs in /srv/NAME/cron.local
+cron     : nightly DB backup and JWT blacklist cleanup, plus any jobs in /srv/NAME/cron.local
 journald : app logs.   nginx : access/error logs (rotated by logrotate)
 ```
 
@@ -31,7 +31,7 @@ There are two kinds, and each lives in one place:
 
 | Kind | Where | Examples |
 |---|---|---|
-| **The project** (true wherever it is deployed) | top of `hosting/provision.sh`, `backend/.python-version`, `"engines"` in `frontend/package.json` | backend/frontend folders, WSGI app, health and auth paths, test and build commands, files never copied; Python version; Node major |
+| **The project** (true wherever it is deployed) | top of `hosting/provision.sh`, `backend/.python-version`, `"engines"` in `frontend/package.json` | backend/frontend folders, WSGI app, health path, rate-limited sign-in endpoints, test and build commands, files never copied, cron jobs; Python version; Node major |
 | **The deploy target** (this server, this domain) | `hosting/.env` on your Mac, gitignored | `DEPLOY_HOST`, `DEPLOY_NAME`, `DEPLOY_DOMAIN`, `DEPLOY_REPO`, … |
 
 The first time you run `./hosting/provision.sh` it asks for any missing target setting and appends the answer to `hosting/.env`; after that it just reads the file. Every run copies the settings into a `DEPLOY_*` block in `/srv/NAME/.env` on the server, which is where `bin/deploy` and later runs on the server read them. Change a setting in `hosting/.env` and re-run provision; don't edit the server's copy.
@@ -67,7 +67,7 @@ The server doesn't use the keychain from local development: production settings 
    It saves your answers in `hosting/.env`, copies itself to `DEPLOY_HOST` and runs there.
 3. **Add the printed deploy key to GitHub:**
    Repo → Settings → Deploy keys → Add key (leave "Allow write access" **off**).
-4. **Add any app-specific secrets** to `/srv/NAME/.env` on the server (`SECRET_KEY`, `SETTINGS_ENCRYPTION_KEY`, `DATABASE_URL`, `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` are generated automatically).
+4. **Add any app-specific secrets** to `/srv/NAME/.env` on the server (`SECRET_KEY`, `SETTINGS_ENCRYPTION_KEY`, `ADMIN_URL`, `DATABASE_URL`, `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` are generated automatically). To let visitors read public pages without an account, add `REQUIRE_LOGIN=False` (see the README).
 5. **Deploy the code:**
    ```bash
    ./hosting/deploy.sh
@@ -77,6 +77,7 @@ The server doesn't use the keychain from local development: production settings 
    ```bash
    ssh -t HOST 'sudo -u NAME /srv/NAME/bin/manage add_user you@example.com --name "Your Name" --admin'
    ```
+   Sign in at `https://DOMAIN` with that password; the app then makes you add a passkey, and from then on the account signs in with the passkey only. The Django admin is at `https://DOMAIN/ADMIN_URL` (provision prints it; it's also in `/srv/NAME/.env`). Lost every passkey? `sudo -u NAME /srv/NAME/bin/manage reset_passkeys you@example.com` removes them and signs the account out everywhere.
 7. **Turn on the firewall** if the server doesn't have one yet. Provision allows nginx in `ufw` but never enables it, since that could lock you out if your SSH port isn't allowed:
    ```bash
    ssh -t HOST 'sudo ufw allow OpenSSH && sudo ufw enable'
@@ -94,7 +95,8 @@ After that, day-to-day deploys are just `git push && ./hosting/deploy.sh`.
 2. **`backend/config/settings/production.py`** reads `SECRET_KEY`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL` and `ALLOW_REGISTRATION` (default `False` in production) from `.env` / environment, trusts nginx's `X-Forwarded-Proto`, marks cookies secure, and logs tracebacks to stdout for `journald`.
 3. **`STATIC_ROOT = BASE_DIR / "staticfiles"`**, served by nginx at `/static/`.
 4. **Health check at `/health/`** (`backend/config/urls.py`) that verifies the database connection and returns 200 (or 503 if the DB is unreachable). nginx proxies it to Django, so an external uptime monitor sees the real status; `provision.sh` and `bin/deploy` check it after every start.
-5. **Auth routes under `/api/v1/auth/`**, which nginx rate-limits to 5 requests/min per IP (burst 10).
+5. **Sign-in endpoints** (`login`, `register`, `refresh` and passkey sign-in under `/api/v1/auth/`), which nginx rate-limits to 5 requests/min per IP (burst 10): `AUTH_LOCATION` at the top of `provision.sh`.
+6. **The Django admin at `ADMIN_URL`**, which `provision.sh` sets to a random `admin-xxxxxxxxxx/` the first time and nginx proxies. Its password form is replaced by the app's passkey sign-in. Change it in `/srv/NAME/.env` and re-run provision (nginx needs the new path).
 
 ## Choosing a database
 
@@ -117,12 +119,12 @@ After that, day-to-day deploys are just `git push && ./hosting/deploy.sh`.
 | 4 | Folders and venv | `/srv/NAME/...` with strict owners/modes; creates `/srv/NAME/venv` |
 | 5 | Swap | `/swapfile` of `SWAP_MB` (1024 MB), unless ≥512 MB swap exists |
 | 6 | Database | `postgres`: role and database `NAME`. `sqlite` / `external`: nothing to create here |
-| 7 | Secrets file | creates `/srv/NAME/.env` (`you:NAME`, `640`), generates `SECRET_KEY` and `SETTINGS_ENCRYPTION_KEY` once, sets `DJANGO_ENV`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL` (and `PGHOST` for local Postgres), and writes the `DEPLOY_*` settings |
+| 7 | Secrets file | creates `/srv/NAME/.env` (`you:NAME`, `640`), generates `SECRET_KEY`, `SETTINGS_ENCRYPTION_KEY` and `ADMIN_URL` once, sets `DJANGO_ENV`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL` (and `PGHOST` for local Postgres), and writes the `DEPLOY_*` settings |
 | 8 | Helper scripts | `bin/manage` (`manage.py` with `.env` loaded) and `bin/backup-db` |
 | 9 | Deploy from git | read-only deploy key `~/.ssh/deploy_NAME` + ssh alias, `staging/`, `bin/deploy` |
 | 10 | systemd | `NAME.service`, sandboxed (`ProtectSystem=strict`, `ProtectHome=true`, writable `data/` only) |
 | 11 | nginx and HTTPS | site, proxy snippet, Let's Encrypt certificate once DNS points here, renewal reload hook |
-| 12 | Cron | `/etc/cron.d/NAME`: nightly backup plus any jobs in `/srv/NAME/cron.local` |
+| 12 | Cron | `/etc/cron.d/NAME`: nightly backup, the project's `JOBS` (top of `provision.sh`; `flushexpiredtokens`), plus any jobs in `/srv/NAME/cron.local` |
 | 13 | Journal | caps the systemd journal at 200 MB |
 | 14 | Firewall | allows `Nginx Full` in `ufw` (never enables `ufw` itself) |
 | 15 | App | once code is deployed: `uv sync --frozen --no-dev`, `migrate`, `collectstatic`, account check |
@@ -184,7 +186,11 @@ You can rehearse provisioning and deploying on a disposable Ubuntu VM on your Ma
    multipass exec hosting-test -- bash -c "echo '$(cat ~/.ssh/id_rsa.pub)' >> ~/.ssh/authorized_keys"
    multipass info hosting-test | grep IPv4
    ```
-   Add it to `~/.ssh/config` (`Host hosting-test`, `HostName` the VM's IP, `User ubuntu`), and to `/etc/hosts` as `IP gfb.test` so a browser can reach it by name.
+   Add it to `~/.ssh/config` (`Host hosting-test`, `HostName` the VM's IP, `User ubuntu`), and give it a name for the browser in `/etc/hosts` (Multipass on macOS has no DNS names for VMs):
+   ```bash
+   echo "IP gfb.test" | sudo tee -a /etc/hosts
+   ```
+   Use a `.test` name (reserved for testing; `.local` clashes with mDNS). Passkeys need a name rather than an IP, and HTTPS (step 5).
 2. **Give the VM a repo to deploy from**, so no GitHub deploy key is needed. A bare repo on the VM itself:
    ```bash
    ssh hosting-test 'git init -q --bare -b main ~/gfb.git'
@@ -206,7 +212,17 @@ You can rehearse provisioning and deploying on a disposable Ubuntu VM on your Ma
    ssh hosting-test 'cat ~/.ssh/deploy_gfb.pub >> ~/.ssh/authorized_keys'
    ./hosting/deploy.sh --env hosting/.env.test
    ```
-5. **Look around** at `http://gfb.test`. There's no DNS, so certbot is skipped and the site stays on plain HTTP: the Vue app and its API login work, but Django admin login doesn't, because production marks cookies secure. For HTTPS, make a certificate with [`mkcert`](https://github.com/FiloSottile/mkcert) (`mkcert gfb.test`), copy it on the VM to `/etc/letsencrypt/live/gfb.test/fullchain.pem` and `privkey.pem`, and re-run provision.
+5. **Turn on HTTPS** with a locally trusted certificate. There's no public DNS, so certbot is skipped and the site starts on plain HTTP, where password sign-in works but passkeys don't (browsers only allow them over https or on `localhost`) and neither does the Django admin (production cookies are secure-only). [`mkcert`](https://github.com/FiloSottile/mkcert) makes a certificate your Mac trusts:
+   ```bash
+   brew install mkcert && mkcert -install          # once: adds a local CA to your keychain
+   mkcert -cert-file gfb.test.pem -key-file gfb.test-key.pem gfb.test
+   scp gfb.test.pem gfb.test-key.pem hosting-test:
+   ssh hosting-test 'sudo install -d /etc/letsencrypt/live/gfb.test &&
+     sudo install -m 644 gfb.test.pem /etc/letsencrypt/live/gfb.test/fullchain.pem &&
+     sudo install -m 600 gfb.test-key.pem /etc/letsencrypt/live/gfb.test/privkey.pem && rm gfb.test*.pem'
+   ./hosting/provision.sh --env hosting/.env.test   # sees the certificate, switches nginx to https
+   ```
+   Then open `https://gfb.test`. Firefox uses its own trust store: `brew install nss` before `mkcert -install`.
 6. **Throw it away:** `multipass delete --purge hosting-test`, then remove the `~/.ssh/config` block, the `/etc/hosts` line, and the VM's `~/.ssh/known_hosts` entry.
 
 ## Scheduled jobs (`cron.local`)
@@ -220,6 +236,8 @@ You can rehearse provisioning and deploying on a disposable Ubuntu VM on your Ma
 ```
 
 Keep `/srv/NAME/cron.local` owned by your deploy user and mode `644`, then re-run `./hosting/provision.sh`.
+
+Jobs every deployment of the project needs go in `JOBS` at the top of `hosting/provision.sh` instead, in the same format (`bin/` there means `/srv/NAME/bin/`). The boilerplate's one is a nightly `manage flushexpiredtokens`, which deletes expired rows from the JWT blacklist tables.
 
 ## Backups
 
@@ -261,6 +279,8 @@ sudo systemctl restart NAME                                              # resta
 journalctl -u NAME -f                                                    # live app logs & tracebacks
 journalctl -t NAME-backup                                                # backup logs
 sudo -u NAME /srv/NAME/bin/manage add_user you@example.com --name "You" --admin
+sudo -u NAME /srv/NAME/bin/manage reset_passkeys you@example.com         # lost passkeys: remove them, sign out everywhere
+grep ^ADMIN_URL /srv/NAME/.env                                           # where the Django admin is
 sudo -u NAME /srv/NAME/bin/manage shell                                  # Django shell
 sudo -u NAME psql NAME                                                   # Postgres shell
 ```

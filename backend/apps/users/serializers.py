@@ -2,6 +2,7 @@
 
 import re
 
+from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
@@ -18,6 +19,7 @@ ALLOWED_SETTINGS_KEYS = {
     "default_view",
     "api_keys",
     "default_ai_provider",
+    "skip_passkey_offer",
 }
 
 # Safe color string pattern: hex color (#fff, #123456) or a simple color name
@@ -84,6 +86,8 @@ class UserSettingsSerializer(serializers.Serializer):
         required=False,
         default=dict,
     )
+    # "Don't ask again" on the add-a-passkey offer after a password sign-in.
+    skip_passkey_offer = serializers.BooleanField(required=False, default=False)
 
     def validate_theme_colors(self, value: dict) -> dict:
         if len(value) > 100:
@@ -131,13 +135,30 @@ class UserSerializer(serializers.ModelSerializer):
 
     organization = OrganizationSerializer(read_only=True)
     settings = serializers.SerializerMethodField()
+    has_passkey = serializers.SerializerMethodField()
+    admin_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "email", "name", "organization", "settings"]
+        fields = [
+            "id",
+            "email",
+            "name",
+            "organization",
+            "settings",
+            "is_staff",
+            "has_passkey",
+            "admin_url",
+        ]
 
     def get_settings(self, obj):
         return format_safe_user_settings(obj.settings or {})
+
+    def get_has_passkey(self, obj) -> bool:
+        return obj.passkeys.exists()
+
+    def get_admin_url(self, obj) -> str | None:
+        return f"/{django_settings.ADMIN_URL}" if obj.is_staff else None
 
 
 class RegisterSerializer(serializers.Serializer):

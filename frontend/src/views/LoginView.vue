@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { isServerPage } from '@/router'
+import { passkeyErrorMessage, passkeysSupported } from '@/services/passkeys'
 import { useAuthStore } from '@/stores/auth'
 import { firstError } from '@/utils/apiErrors'
+import { safeRedirect } from '@/utils/redirect'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,7 +16,26 @@ onMounted(() => authStore.loadAuthConfig())
 const email = ref('')
 const password = ref('')
 const isLoading = ref(false)
+const isPasskeyLoading = ref(false)
 const errorMessage = ref('')
+const canUsePasskey = passkeysSupported()
+// on the way to the Django admin, which only a passkey sign-in opens
+const toAdmin = computed(() => isServerPage(route.query.redirect))
+
+function goNext(method: 'pwd' | 'passkey') {
+  const target = safeRedirect(route.query.redirect)
+  if (target && isServerPage(target)) {
+    // Only a staff passkey sign-in opens an admin session; anyone else would be sent
+    // straight back here.
+    if (method === 'passkey' && authStore.user?.is_staff) {
+      window.location.assign(target)
+      return
+    }
+    router.push('/dashboard')
+    return
+  }
+  router.push(target ?? '/dashboard')
+}
 
 async function handleSubmit() {
   isLoading.value = true
@@ -21,8 +43,7 @@ async function handleSubmit() {
   
   try {
     await authStore.login({ email: email.value, password: password.value })
-    const redirect = route.query.redirect
-    router.push(typeof redirect === 'string' ? redirect : '/dashboard')
+    goNext('pwd')
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'response' in error) {
       const err = error as { response?: { data?: unknown } }
@@ -34,6 +55,19 @@ async function handleSubmit() {
     isLoading.value = false
   }
 }
+
+async function handlePasskey() {
+  isPasskeyLoading.value = true
+  errorMessage.value = ''
+  try {
+    await authStore.loginWithPasskey()
+    goNext('passkey')
+  } catch (error: unknown) {
+    errorMessage.value = passkeyErrorMessage(error) ?? ''
+  } finally {
+    isPasskeyLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -43,6 +77,9 @@ async function handleSubmit() {
         <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
           Sign in to your account
         </h2>
+        <p v-if="toAdmin" class="mt-2 text-center text-sm text-gray-600">
+          Sign in with your passkey to continue to the admin.
+        </p>
         <p v-if="authStore.allowRegistration" class="mt-2 text-center text-sm text-gray-600">
           Or
           <router-link to="/register" class="font-medium text-blue-600 hover:text-blue-500">
@@ -97,6 +134,25 @@ async function handleSubmit() {
           </button>
         </div>
       </form>
+
+      <div v-if="canUsePasskey" class="space-y-6">
+        <div class="flex items-center gap-3 text-xs uppercase tracking-wider text-gray-400">
+          <span class="h-px flex-1 bg-gray-200"></span>
+          or
+          <span class="h-px flex-1 bg-gray-200"></span>
+        </div>
+        <button
+          type="button"
+          :disabled="isPasskeyLoading"
+          class="w-full flex items-center justify-center gap-2 py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-800 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          @click="handlePasskey"
+        >
+          <svg class="h-5 w-5 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+          </svg>
+          {{ isPasskeyLoading ? 'Waiting for your passkey...' : 'Sign in with a passkey' }}
+        </button>
+      </div>
     </div>
   </div>
 </template>

@@ -8,6 +8,12 @@ const route = useRoute()
 const authStore = useAuthStore()
 
 const isAuthenticated = computed(() => authStore.isAuthenticated)
+// Anonymous visitors see the bar (with a sign-in link) only on public pages, which
+// exist only while the server's REQUIRE_LOGIN is off.
+const showForVisitor = computed(
+  () => !isAuthenticated.value && authStore.requireLogin === false && !!route.meta.public
+)
+const adminUrl = computed(() => authStore.user?.admin_url || null)
 const isMenuOpen = ref(false)
 const profileMenu = ref<HTMLElement | null>(null)
 
@@ -30,9 +36,9 @@ const navItems = [
   { name: 'Dashboard', path: '/dashboard' },
 ]
 
-function handleLogout() {
+async function handleLogout() {
   isMenuOpen.value = false
-  authStore.logout()
+  await authStore.logout()
   router.push('/login')
 }
 
@@ -51,16 +57,16 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
 </script>
 
 <template>
-  <nav v-if="isAuthenticated" class="bg-white shadow-sm border-b border-gray-200">
+  <nav v-if="isAuthenticated || showForVisitor" class="bg-white shadow-sm border-b border-gray-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex h-16 items-center justify-between">
         <!-- Logo -->
-        <router-link to="/dashboard" class="flex-shrink-0">
+        <router-link :to="isAuthenticated ? '/dashboard' : '/'" class="flex-shrink-0">
           <span class="text-xl font-bold text-primary">App</span>
         </router-link>
 
         <!-- Nav Links -->
-        <div class="hidden sm:flex sm:items-center sm:space-x-1">
+        <div v-if="isAuthenticated" class="hidden sm:flex sm:items-center sm:space-x-1">
           <router-link
             v-for="item in navItems"
             :key="item.path"
@@ -74,8 +80,16 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
           </router-link>
         </div>
 
+        <router-link
+          v-if="!isAuthenticated"
+          :to="{ name: 'login', query: { redirect: route.fullPath } }"
+          class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+        >
+          Sign in
+        </router-link>
+
         <!-- Profile menu -->
-        <div ref="profileMenu" class="relative">
+        <div v-else ref="profileMenu" class="relative">
           <button
             type="button"
             aria-label="Open account menu"
@@ -115,6 +129,18 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
               </svg>
               Profile & settings
             </router-link>
+            <a
+              v-if="adminUrl"
+              :href="adminUrl"
+              role="menuitem"
+              class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-900"
+              @click="closeMenu"
+            >
+              <svg class="h-5 w-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+              </svg>
+              Admin
+            </a>
             <button
               type="button"
               role="menuitem"

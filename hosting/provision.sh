@@ -28,11 +28,14 @@ BACKEND_DIR=backend                        # folder with manage.py and pyproject
 FRONTEND_DIR=frontend                      # Vue project, or '' for none; builds to FRONTEND_DIR/dist
 WSGI=config.wsgi:application               # gunicorn app
 HEALTH_PATH=/health/                       # checked after start and deploy, or none
-AUTH_PATH=/api/v1/auth/                    # nginx rate-limits it to 5 req/min (burst 10), or none
+# nginx location for the sign-in endpoints, rate-limited to 5 req/min per IP (burst 10), or none
+AUTH_LOCATION='~ ^/api/v1/auth/(login|register|refresh|passkeys/login)/'
 TEST_CMD='pytest -q'                       # run in BACKEND_DIR with the staging venv; '' skips tests
 BUILD_CMD='pnpm install --frozen-lockfile && pnpm build'   # run in FRONTEND_DIR
 EXTRA=()                                   # other repo folders the backend imports, copied next to it
 EXCLUDES=('keychain.key' 'keychain.json')  # never copied to the server
+# Cron jobs as "schedule command", run as the app user; bin/ means /srv/NAME/bin/
+JOBS=('40 3 * * *  bin/manage flushexpiredtokens')   # drop expired JWT blacklist rows
 
 usage() {
   cat <<'EOF'
@@ -406,6 +409,10 @@ env_sync() { # env_sync KEY VALUE: set KEY when it differs. Deploy settings only
   env_set "$1" "$2"
   RESTART_NEEDED=$restart
 }
+admin_url() { # ADMIN_URL from .env as Django reads it: no leading slash, one trailing slash
+  local a; a=$(envfile_get ADMIN_URL "$ENV_FILE"); a=${a#/}; a=${a%/}
+  printf '%s/' "${a:-django-admin}"
+}
 gen_secret() { python3 -c 'import secrets; print(secrets.token_urlsafe(50))'; }
 gen_fernet_key() { python3 -c 'import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())'; }
 
@@ -620,6 +627,7 @@ step_env() {
   esac
 
   # Generated once, never replaced.
+  env_has ADMIN_URL || env_set ADMIN_URL "admin-$(python3 -c 'import secrets; print(secrets.token_hex(5))')/"
   env_has SECRET_KEY || env_set SECRET_KEY "$(gen_secret)"
   env_has SETTINGS_ENCRYPTION_KEY || env_set SETTINGS_ENCRYPTION_KEY "$(gen_fernet_key)"
 
@@ -985,10 +993,10 @@ nginx_body() {
     add_header Referrer-Policy strict-origin-when-cross-origin always;
 
 EOF
-  if [ "$AUTH_PATH" != none ]; then
+  if [ "$AUTH_LOCATION" != none ]; then
     cat <<EOF
-    # slow down password guessing on login/register/refresh
-    location $AUTH_PATH {
+    # slow down password guessing on the sign-in endpoints
+    location $AUTH_LOCATION {
         limit_req zone=@NAME@_auth burst=10 nodelay;
         include /etc/nginx/snippets/@NAME@-proxy.conf;
     }
@@ -1004,15 +1012,18 @@ EOF
 
 EOF
   fi
-  cat <<'EOF'
+  cat <<EOF
     location /api/ {
         include /etc/nginx/snippets/@NAME@-proxy.conf;
     }
 
-    location /admin/ {
-        # optional: allow 203.0.113.7; deny all;     (your home IP)
+    # the Django admin, at ADMIN_URL from .env (staff sign in to it with a passkey)
+    location /$(admin_url) {
         include /etc/nginx/snippets/@NAME@-proxy.conf;
     }
+
+EOF
+  cat <<'EOF'
 
     location /static/ {
         alias @APP_DIR@/staticfiles/;
@@ -1031,7 +1042,7 @@ EOF
 }
 
 nginx_site() { # nginx_site plain|tls
-  if [ "$AUTH_PATH" != none ]; then
+  if [ "$AUTH_LOCATION" != none ]; then
     echo 'limit_req_zone $binary_remote_addr zone=@NAME@_auth:10m rate=5r/m;'
     echo
   fi
@@ -1127,7 +1138,7 @@ cron_local_lines() { # cron_local_lines FILE: "schedule command" lines -> "sched
     END { exit bad }' "$1"
 }
 
-cron_file() { # cron_file EXTRA_LINES
+cron_file() { # cron_file PROJECT_LINES LOCAL_LINES
   cat <<'EOF'
 # Managed by hosting/provision.sh: edits here are overwritten on the next run.
 # App jobs go in /srv/@NAME@/cron.local as "schedule command"; they run as @NAME@.
@@ -1137,12 +1148,20 @@ cron_file() { # cron_file EXTRA_LINES
 15 3 * * *  @NAME@  /srv/@NAME@/bin/backup-db 2>&1 | logger -t @NAME@-backup
 EOF
   if [ -n "$1" ]; then
-    printf '\n# from /srv/@NAME@/cron.local\n%s\n' "$1"
+    printf '\n# from JOBS in hosting/provision.sh\n%s\n' "$1"
+  fi
+  if [ -n "$2" ]; then
+    printf '\n# from /srv/@NAME@/cron.local\n%s\n' "$2"
   fi
 }
 
 step_cron() {
-  local extra="" file="$ROOT/cron.local"
+  local jobs="" extra="" file="$ROOT/cron.local"
+  if [ ${#JOBS[@]} -gt 0 ]; then
+    # bin/ is /srv/NAME/bin/; output goes to the journal like the backup's
+    jobs=$(printf '%s 2>&1 | logger -t @NAME@-cron\n' "${JOBS[@]}" | sed "s| bin/| $ROOT/bin/|" |
+           cron_local_lines /dev/stdin) || die "fix JOBS at the top of hosting/provision.sh"
+  fi
   if [ -f "$file" ]; then
     # these lines end up running from a root-owned cron file, so only the deploy user may write them
     if [ "$(stat -c %U "$file")" != "$DEPLOY_USER" ] || [ -n "$(find "$file" -perm /022)" ]; then
@@ -1151,7 +1170,7 @@ step_cron() {
     extra=$(cron_local_lines "$file") || die "fix $file and re-run"
     say "including $(printf '%s\n' "$extra" | grep -c .) job(s) from $file"
   fi
-  install_file "/etc/cron.d/$NAME" 644 root:root < <(cron_file "$extra")
+  install_file "/etc/cron.d/$NAME" 644 root:root < <(cron_file "$jobs" "$extra")
 }
 
 step_journald() {
@@ -1402,6 +1421,7 @@ server_main() {
   done
   echo
   if have_cert; then echo "Done. https://$DOMAIN/"; else echo "Done. http://$DOMAIN/ (no certificate yet)"; fi
+  echo "Django admin: /$(admin_url) (staff sign in with a passkey)"
 }
 
 main() { # on the Mac: read hosting/.env and run on the server; on the server: provision

@@ -168,7 +168,7 @@ class TestRegistrationFlag:
         settings.ALLOW_REGISTRATION = False
         response = api_client.get("/api/v1/auth/config/")
         assert response.status_code == 200
-        assert response.json() == {"allow_registration": False}
+        assert response.json()["allow_registration"] is False
 
     def test_register_blocked_when_disabled(self, api_client, settings):
         settings.ALLOW_REGISTRATION = False
@@ -211,3 +211,167 @@ class TestAddUserCommand:
         with pytest.raises(CommandError, match="already exists"):
             self._run(monkeypatch, [VALID_PASSWORD, VALID_PASSWORD], sample_user.email, "--name", "Dup")
         assert not User.objects.filter(email="a@example.com").exists()
+
+
+@pytest.mark.django_db
+class TestRequireLogin:
+    def test_config_reports_flag(self, api_client, settings):
+        settings.REQUIRE_LOGIN = False
+        assert api_client.get("/api/v1/auth/config/").json()["require_login"] is False
+        settings.REQUIRE_LOGIN = True
+        assert api_client.get("/api/v1/auth/config/").json()["require_login"] is True
+
+    @pytest.mark.parametrize(
+        "require_login, method, signed_in, allowed",
+        [
+            (True, "get", False, False),
+            (True, "get", True, True),
+            (False, "get", False, True),
+            (False, "head", False, True),
+            (False, "post", False, False),
+            (False, "delete", False, False),
+            (False, "post", True, True),
+        ],
+    )
+    def test_public_read_only(self, settings, sample_user, require_login, method, signed_in, allowed):
+        from rest_framework.response import Response
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from rest_framework.views import APIView
+
+        from apps.users.permissions import PublicReadOnly
+
+        class Articles(APIView):
+            permission_classes = [PublicReadOnly]
+
+            def get(self, request):
+                return Response([])
+
+            post = delete = get
+
+        settings.REQUIRE_LOGIN = require_login
+        request = getattr(APIRequestFactory(), method)("/articles/")
+        if signed_in:
+            force_authenticate(request, user=sample_user)
+        response = Articles.as_view()(request)
+        assert (response.status_code == 200) is allowed
+
+    def test_default_views_stay_private_when_login_is_off(self, api_client, settings):
+        settings.REQUIRE_LOGIN = False
+        assert api_client.get("/api/v1/auth/settings/").status_code == 401
+
+
+@pytest.mark.django_db
+class TestSessions:
+    def _login(self, api_client, user):
+        response = api_client.post(
+            "/api/v1/auth/login/", {"email": user.email, "password": VALID_PASSWORD}, format="json"
+        )
+        assert response.status_code == 200
+        return response.json()
+
+    def test_logout_revokes_the_refresh_token(self, api_client, sample_user):
+        refresh = self._login(api_client, sample_user)["refresh"]
+        assert api_client.post("/api/v1/auth/refresh/", {"refresh": refresh}, format="json").status_code == 200
+        assert api_client.post("/api/v1/auth/logout/", {"refresh": refresh}, format="json").status_code == 204
+        assert api_client.post("/api/v1/auth/refresh/", {"refresh": refresh}, format="json").status_code == 401
+
+    def test_logout_tolerates_junk(self, api_client):
+        api_client.credentials(HTTP_AUTHORIZATION="Bearer expired.junk.token")
+        assert api_client.post("/api/v1/auth/logout/", {"refresh": "junk"}, format="json").status_code == 204
+
+    def test_refresh_refused_for_deactivated_user(self, api_client, sample_user):
+        refresh = self._login(api_client, sample_user)["refresh"]
+        User.objects.filter(pk=sample_user.pk).update(is_active=False)
+        assert api_client.post("/api/v1/auth/refresh/", {"refresh": refresh}, format="json").status_code == 401
+
+    def test_stale_access_token_does_not_block_login(self, api_client, sample_user):
+        api_client.credentials(HTTP_AUTHORIZATION="Bearer expired.junk.token")
+        self._login(api_client, sample_user)
+
+    def test_password_tokens_are_marked(self, api_client, sample_user):
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        data = self._login(api_client, sample_user)
+        assert AccessToken(data["access"])["amr"] == "pwd"
+
+
+@pytest.mark.django_db
+class TestPasskeySetupPrompt:
+    def _login(self, api_client, user):
+        return api_client.post(
+            "/api/v1/auth/login/", {"email": user.email, "password": VALID_PASSWORD}, format="json"
+        )
+
+    def test_offered_to_users_without_a_passkey(self, api_client, sample_user):
+        assert self._login(api_client, sample_user).json()["passkey_setup"] == "offer"
+
+    def test_not_offered_after_dont_ask_again(self, api_client, sample_user):
+        api_client.force_authenticate(user=sample_user)
+        api_client.patch("/api/v1/auth/settings/", {"skip_passkey_offer": True}, format="json")
+        api_client.force_authenticate(user=None)
+        assert self._login(api_client, sample_user).json()["passkey_setup"] is None
+
+    def test_required_for_staff_without_a_passkey(self, api_client, sample_user):
+        User.objects.filter(pk=sample_user.pk).update(is_staff=True)
+        data = self._login(api_client, sample_user).json()
+        assert data["passkey_setup"] == "required"
+        assert data["user"]["is_staff"] is True
+        assert data["user"]["admin_url"].startswith("/")
+
+    def test_staff_with_a_passkey_cannot_use_a_password(self, api_client, sample_user):
+        from apps.passkeys.models import Passkey
+
+        User.objects.filter(pk=sample_user.pk).update(is_staff=True)
+        Passkey.objects.create(user=sample_user, name="Key", credential_id="abc", public_key=b"x", rp_id="localhost")
+        response = self._login(api_client, sample_user)
+        assert response.status_code == 403
+        assert response.json()["code"] == "passkey_required"
+        assert "access" not in response.json()
+
+
+@pytest.mark.django_db
+class TestIsPasskeyAdmin:
+    def _check(self, user, amr):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.users.permissions import IsPasskeyAdmin
+
+        token = AccessToken.for_user(user)
+        token["amr"] = amr
+        request = APIRequestFactory().get("/")
+        force_authenticate(request, user=user, token=token)
+        from rest_framework.request import Request
+
+        return IsPasskeyAdmin().has_permission(Request(request), None)
+
+    def test_needs_staff_and_a_passkey_sign_in(self, sample_user):
+        assert not self._check(sample_user, "passkey")
+        sample_user.is_staff = True
+        assert not self._check(sample_user, "pwd")
+        assert self._check(sample_user, "passkey")
+
+
+@pytest.mark.django_db
+class TestAdminSite:
+    def test_not_at_slash_admin(self, client):
+        assert client.get("/admin/").status_code == 404
+
+    def test_login_sends_staff_to_the_app(self, client, settings):
+        response = client.get(f"/{settings.ADMIN_URL}")
+        assert response.status_code == 302
+        login = client.get(response["Location"])
+        assert login.status_code == 302
+        assert login["Location"] == f"/login?redirect=%2F{settings.ADMIN_URL.replace('/', '%2F')}"
+
+    def test_login_ignores_offsite_next(self, client, settings):
+        response = client.get(f"/{settings.ADMIN_URL}login/?next=//evil.example/")
+        assert "evil" not in response["Location"]
+
+    def test_password_login_form_is_gone(self, client, sample_user, settings):
+        response = client.post(
+            f"/{settings.ADMIN_URL}login/",
+            {"username": sample_user.email, "password": VALID_PASSWORD},
+        )
+        assert response.status_code == 302
+        assert response["Location"].startswith("/login?")

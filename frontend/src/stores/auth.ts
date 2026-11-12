@@ -1,9 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type {
+  AuthConfig,
   User,
   LoginCredentials,
   LoginResponse,
+  PasskeySetup,
   RegisterRequest,
   RegisterResponse,
   UserSettings,
@@ -18,6 +20,7 @@ import {
   clearStoredAuth
 } from '@/utils/authStorage'
 import api from '@/services/api'
+import { createPasskey, passkeysSupported, signInWithPasskey } from '@/services/passkeys'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
@@ -25,6 +28,17 @@ export const useAuthStore = defineStore('auth', () => {
   const userSettings = ref<UserSettings | null>(null)
 
   const isAuthenticated = computed(() => !!token.value && !isTokenExpired(token.value))
+
+  // Set after a password sign-in when the server suggests adding a passkey; cleared by
+  // "Not now". Not persisted, so the offer comes back on the next password sign-in.
+  const passkeyOffer = ref(false)
+
+  /** The add-a-passkey dialog to show: staff without a passkey can't dismiss it. */
+  const passkeyPrompt = computed<PasskeySetup>(() => {
+    if (!isAuthenticated.value || !user.value) return null
+    if (user.value.is_staff && !user.value.has_passkey) return 'required'
+    return passkeyOffer.value && passkeysSupported() ? 'offer' : null
+  })
 
   function clearAuthState(): void {
     token.value = null
@@ -108,29 +122,64 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function login(credentials: LoginCredentials): Promise<void> {
-    const response = await api.post<LoginResponse>('/api/v1/auth/login/', credentials)
-    token.value = response.data.access
-    localStorage.setItem(TOKEN_KEY, response.data.access)
-    if (response.data.refresh) {
-      localStorage.setItem(REFRESH_KEY, response.data.refresh)
+  function startSession(data: LoginResponse): void {
+    token.value = data.access
+    localStorage.setItem(TOKEN_KEY, data.access)
+    if (data.refresh) {
+      localStorage.setItem(REFRESH_KEY, data.refresh)
     }
-    if (response.data.user) {
-      storeUser(response.data.user)
+    if (data.user) {
+      storeUser(data.user)
     }
+    passkeyOffer.value = data.passkey_setup === 'offer'
   }
 
-  // null until fetched; the register link/page stay hidden unless the server says yes.
-  const allowRegistration = ref<boolean | null>(null)
+  async function login(credentials: LoginCredentials): Promise<void> {
+    const response = await api.post<LoginResponse>('/api/v1/auth/login/', credentials)
+    startSession(response.data)
+  }
 
-  async function loadAuthConfig(): Promise<void> {
-    if (allowRegistration.value !== null) return
-    try {
-      const response = await api.get<{ allow_registration: boolean }>('/api/v1/auth/config/')
-      allowRegistration.value = response.data.allow_registration
-    } catch {
-      allowRegistration.value = false
+  async function loginWithPasskey(): Promise<void> {
+    startSession(await signInWithPasskey())
+  }
+
+  function setHasPasskey(value: boolean): void {
+    if (user.value && user.value.has_passkey !== value) storeUser({ ...user.value, has_passkey: value })
+  }
+
+  async function addPasskey(name = ''): Promise<void> {
+    await createPasskey(name)
+    passkeyOffer.value = false
+    setHasPasskey(true)
+  }
+
+  /** "Not now" closes the offer; "Don't ask again" also saves that to the user's settings. */
+  async function dismissPasskeyOffer(forever: boolean): Promise<void> {
+    passkeyOffer.value = false
+    if (forever) await updateUserSettings({ skip_passkey_offer: true })
+  }
+
+  // null until fetched. Both fail closed: registration hidden, and every page needs a
+  // login unless the server says REQUIRE_LOGIN is off.
+  const allowRegistration = ref<boolean | null>(null)
+  const requireLogin = ref<boolean | null>(null)
+  let configRequest: Promise<void> | null = null
+
+  function loadAuthConfig(): Promise<void> {
+    if (!configRequest) {
+      configRequest = api
+        .get<AuthConfig>('/api/v1/auth/config/')
+        .then((response) => {
+          allowRegistration.value = response.data.allow_registration
+          requireLogin.value = response.data.require_login
+        })
+        .catch(() => {
+          allowRegistration.value = false
+          requireLogin.value = true
+          configRequest = null // ask again on the next navigation
+        })
     }
+    return configRequest
   }
 
   async function register(payload: RegisterRequest): Promise<void> {
@@ -143,10 +192,19 @@ export const useAuthStore = defineStore('auth', () => {
       name: response.data.name,
       organization: response.data.organization
     })
+    passkeyOffer.value = true
   }
 
-  function logout(): void {
+  /** Forget the session here and revoke its refresh token (and any admin session) on the server. */
+  async function logout(): Promise<void> {
+    const refresh = localStorage.getItem(REFRESH_KEY)
     clearAuthState()
+    passkeyOffer.value = false
+    try {
+      await api.post('/api/v1/auth/logout/', { refresh })
+    } catch {
+      // the local session is gone either way
+    }
   }
 
   return {
@@ -159,7 +217,13 @@ export const useAuthStore = defineStore('auth', () => {
     updateUserSettings,
     saveApiKey,
     login,
+    loginWithPasskey,
+    addPasskey,
+    setHasPasskey,
+    passkeyPrompt,
+    dismissPasskeyOffer,
     allowRegistration,
+    requireLogin,
     loadAuthConfig,
     register,
     logout

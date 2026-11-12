@@ -23,7 +23,8 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true
       },
-      '/admin': {
+      // the Django admin (ADMIN_URL in backend/.env; update this if you change it)
+      '/django-admin': {
         target: backendTarget,
         changeOrigin: true
       },
