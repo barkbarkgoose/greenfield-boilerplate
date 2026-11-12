@@ -14,6 +14,7 @@ dependencies = [
     "cryptography>=42",
     "gunicorn>=22.0",
     # Database & filters
+    "psycopg[binary]>=3.2",
     "django-filter>=25.0",
     # Background tasks (optional, enable if needed)
     # "celery>=5.4",

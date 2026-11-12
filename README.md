@@ -194,8 +194,14 @@ per request, before the user is sent to `/login`. On the API side DRF defaults t
 
 ## Deploying
 
-See [`docs/vps-hosting.md`](docs/vps-hosting.md) for a minimal single-server setup
-(nginx, gunicorn, systemd, SQLite, rotating backups, logging).
+`hosting/` provisions and deploys the app on a Debian/Ubuntu VPS (nginx, gunicorn, systemd, PostgreSQL or SQLite, rotating backups, Let's Encrypt HTTPS, and isolated per-app Python/Node runtimes):
+
+1. Run `./hosting/provision.sh`. The first time, it asks for the server, name, domain and repo, and saves the answers in `hosting/.env` (gitignored, see [`hosting/.env.example`](hosting/.env.example)). It then sets up the server and prints a read-only GitHub deploy key.
+2. Add the printed deploy key to GitHub, then run `./hosting/deploy.sh` to test, build, and deploy the pushed commit on the server.
+
+The project's own deploy settings (folders, test and build commands) are at the top of `hosting/provision.sh`; the Python version is in `backend/.python-version` and the Node major in `"engines"` in `frontend/package.json`.
+
+See [`docs/vps-hosting.md`](docs/vps-hosting.md) for the full guide.
 
 ## Dependencies
 

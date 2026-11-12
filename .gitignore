@@ -123,3 +123,8 @@ telemetry-id
 !/.agent-tasks/tasks/*/
 !/.agent-tasks/tasks/*/research/
 !/.agent-tasks/tasks/*/research/**
+
+# Deploy targets for hosting/ scripts (the example is committed)
+/hosting/.env
+/hosting/.env.*
+!/hosting/.env.example
